@@ -1,0 +1,60 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="100%" height="100%">
+  <defs>
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#3ca2ff" />
+      <stop offset="50%" stop-color="#2489f7" />
+      <stop offset="100%" stop-color="#126ee3" />
+    </linearGradient>
+
+    <linearGradient id="cartGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#70baff" />
+      <stop offset="40%" stop-color="#1e84fb" />
+      <stop offset="100%" stop-color="#0753be" />
+    </linearGradient>
+
+    <linearGradient id="metalGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#80c3ff" />
+      <stop offset="100%" stop-color="#004fb9" />
+    </linearGradient>
+
+    <filter id="dropShadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="10" stdDeviation="8" flood-color="#073a80" flood-opacity="0.45" />
+    </filter>
+
+    <filter id="textShadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="4" stdDeviation="4" flood-color="#084293" flood-opacity="0.5" />
+    </filter>
+  </defs>
+
+  <rect width="512" height="512" rx="110" fill="url(#bgGrad)" />
+
+  <g filter="url(#dropShadow)">
+    <path d="M 182 155 C 182 148 188 142 196 142 L 216 142 C 223 142 229 146 232 153 L 243 178 L 322 178 C 330 178 336 183 334 191 L 320 236 C 318 243 311 248 303 248 L 253 248 L 246 230 L 310 230 L 320 196 L 235 196 L 222 160 L 196 160 L 182 155 Z" fill="url(#cartGrad)" />
+    <path d="M 233 192 L 322 192 C 328 192 332 196 330 202 L 316 244 C 314 250 308 254 301 254 L 254 254 C 248 254 242 250 240 244 L 230 202 C 228 196 230 192 233 192 Z" fill="url(#cartGrad)" />
+
+    <path d="M 252 204 L 260 204 L 256 242 L 248 242 Z" fill="#1063cb" />
+    <path d="M 273 204 L 281 204 L 277 242 L 269 242 Z" fill="#1063cb" />
+    <path d="M 294 204 L 302 204 L 298 242 L 290 242 Z" fill="#1063cb" />
+
+    <rect x="236" y="260" width="76" height="10" rx="5" fill="url(#metalGrad)" />
+
+    <circle cx="250" cy="282" r="14" fill="url(#metalGrad)" />
+    <circle cx="250" cy="282" r="7" fill="#ffffff" opacity="0.8" />
+
+    <circle cx="298" cy="282" r="14" fill="url(#metalGrad)" />
+    <circle cx="298" cy="282" r="7" fill="#ffffff" opacity="0.8" />
+  </g>
+
+  <g transform="translate(322, 185)">
+    <path d="M 0 -18 Q 0 0 18 0 Q 0 0 0 18 Q 0 0 -18 0 Q 0 0 0 -18 Z" fill="#ffffff" />
+    <circle cx="0" cy="0" r="5" fill="#ffffff" />
+  </g>
+
+  <text x="256" y="348" font-family="'Times New Roman', Georgia, serif" font-weight="900" font-size="44" fill="#ffffff" text-anchor="middle" letter-spacing="2" filter="url(#textShadow)">CS KASIR</text>
+
+  <g transform="translate(182, 335)">
+    <path d="M 0 -10 Q 0 0 10 0 Q 0 0 0 10 Q 0 0 -10 0 Q 0 0 0 -10 Z" fill="#ffffff" />
+  </g>
+
+  <text x="256" y="386" font-family="'Plus Jakarta Sans', system-ui, -apple-system, sans-serif" font-weight="500" font-size="20" fill="#ffffff" text-anchor="middle" opacity="0.92">Powered by CSTech</text>
+</svg>
