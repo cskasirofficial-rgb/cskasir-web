@@ -18,9 +18,15 @@ export default function Home() {
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col justify-between selection:bg-blue-500 selection:text-white font-sans antialiased">
       <Navbar />
       <Hero />
-      <Benefits />
-      <TrustSection />
-      <Pricing />
+      <section id="fitur">
+        <Benefits />
+      </section>
+      <section id="keunggulan">
+        <TrustSection />
+      </section>
+      <section id="download">
+        <Pricing />
+      </section>
       <FAQSection />
       <Footer />
     </div>
