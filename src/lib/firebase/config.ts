@@ -3,13 +3,13 @@ import { getAuth } from "firebase/auth";
 import { getDatabase } from "firebase/database";
 
 const firebaseConfig = {
-  apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
-  authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
-  databaseURL: process.env.NEXT_PUBLIC_FIREBASE_DATABASE_URL,
-  projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
-  storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET,
-  messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
-  appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID,
+  apiKey: "AIzaSyBRJ-AFZkD1RxT2BhP4KvwVGKDnP5IUUQM",
+  authDomain: "cs-kasir.firebaseapp.com",
+  databaseURL: "https://cs-kasir-default-rtdb.asia-southeast1.firebasedatabase.app",
+  projectId: "cs-kasir",
+  storageBucket: "cs-kasir.firebasestorage.app",
+  messagingSenderId: "12760208804",
+  appId: "1:12760208804:web:dd970a17f9547451455d31",
 };
 
 // Inisialisasi Firebase (Singleton Pattern agar tidak duplikasi koneksi)
