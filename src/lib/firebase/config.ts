@@ -3,7 +3,7 @@ import { getAuth } from "firebase/auth";
 import { getDatabase } from "firebase/database";
 
 const firebaseConfig = {
-  apiKey: "AIzaSyBRJ-AFZkD1RxT2BhP4KvwVGKDnP5IUUQM",
+  apiKey: "AIzaSyBRJ-AFZkDlRxT2BhP4KvwVGKDnP5IUUQM",
   authDomain: "cs-kasir.firebaseapp.com",
   databaseURL: "https://cs-kasir-default-rtdb.asia-southeast1.firebasedatabase.app",
   projectId: "cs-kasir",
