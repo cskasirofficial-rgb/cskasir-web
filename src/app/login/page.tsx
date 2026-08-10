@@ -29,12 +29,15 @@ export default function LoginPage() {
         return;
       }
 
-      // 3. Pengarahan Halaman berdasarkan Role
-      if (profile.role === "OWNER" || profile.role === "ENTERPRISE") {
+      // 3. Pengarahan Halaman berdasarkan Role (Perbaikan Huruf Besar/Kecil)
+      const rolePengguna = profile.role ? profile.role.toLowerCase() : "";
+      
+      if (rolePengguna === "owner" || rolePengguna === "enterprise") {
         router.push("/dashboard");
       } else {
         setErrorMsg(`Role Anda (${profile.role}) belum memiliki akses ke Dashboard Web.`);
       }
+      
     } catch (err: any) {
       console.error("Login error:", err);
       if (err.code === "auth/invalid-credential" || err.code === "auth/user-not-found" || err.code === "auth/wrong-password") {
