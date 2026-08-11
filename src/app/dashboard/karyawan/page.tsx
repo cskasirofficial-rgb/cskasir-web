@@ -16,10 +16,11 @@ interface Pegawai {
   email?: string;
   role: string;
   metodePembayaran?: string;
+  qrisCode?: string;
   status: string;
 }
 
-// Inisialisasi Auth Sekunder agar sesi login Owner tidak terputus saat membuat akun kasir baru
+// Inisialisasi Auth Sekunder
 const firebaseConfig = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
   authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
@@ -46,9 +47,10 @@ export default function KaryawanPage() {
   const [password, setPassword] = useState("");
   const [role, setRole] = useState<"MANAGER" | "SUPERVISOR" | "KASIR" | "CUSTOMER">("KASIR");
   const [metodePembayaran, setMetodePembayaran] = useState<"TUNAI_QRIS_FISIK" | "QRIS_DIGITAL">("TUNAI_QRIS_FISIK");
+  const [qrisCode, setQrisCode] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Data Realtime dari Firebase
+  // Data Realtime Firebase
   const [daftarPegawai, setDaftarPegawai] = useState<Pegawai[]>([]);
 
   useEffect(() => {
@@ -57,7 +59,7 @@ export default function KaryawanPage() {
     }
   }, [user, loading, router]);
 
-  // Sinkronisasi data dari tenant_members & users
+  // Sinkronisasi data asli
   useEffect(() => {
     if (!profile?.groupId) return;
 
@@ -86,7 +88,8 @@ export default function KaryawanPage() {
                 nama: userInfo.username || userInfo.nama || memberInfo.nama || "Pegawai (" + uid.substring(0, 5) + ")",
                 email: userInfo.email || "-",
                 role: (memberInfo.role || userInfo.role || "KASIR").toUpperCase(),
-                metodePembayaran: memberInfo.metodePembayaran || "Tunai / QRIS Fisik",
+                metodePembayaran: memberInfo.metodePembayaran || "TUNAI_QRIS_FISIK",
+                qrisCode: memberInfo.qrisCode || userInfo.qrisCode || "",
                 status: memberInfo.active !== false && userInfo.isActive !== false ? "Aktif" : "Nonaktif",
               };
             });
@@ -98,6 +101,7 @@ export default function KaryawanPage() {
               id: uid,
               nama: tenantData[uid]?.username || "Pegawai (" + uid.substring(0, 5) + ")",
               role: (tenantData[uid]?.role || "KASIR").toUpperCase(),
+              qrisCode: tenantData[uid]?.qrisCode || "",
               status: tenantData[uid]?.active !== false ? "Aktif" : "Nonaktif",
             }));
             setDaftarPegawai(fallbackList);
@@ -130,11 +134,11 @@ export default function KaryawanPage() {
 
   if (!user) return null;
 
-  // Handler Simpan Pegawai Baru
+  // Simpan Pegawai Baru + Kode QR
   const handleTambahPegawai = async (e: React.FormEvent) => {
     e.preventDefault();
     const cleanUsername = nama.trim().toLowerCase().replace(/\s+/g, "");
-    
+
     if (!cleanUsername || password.length < 8 || !profile?.groupId) {
       if (password.length < 8) alert("Password minimal harus 8 karakter!");
       return;
@@ -142,27 +146,25 @@ export default function KaryawanPage() {
 
     setIsSubmitting(true);
     try {
-      // 1. Buat email format internal toko (username@cskasir.internal)
       const generatedEmail = `${cleanUsername}_${profile.groupId.substring(5, 12)}@cskasir.internal`;
       
-      // 2. Daftarkan akun baru ke Firebase Authentication
       const userCredential = await createUserWithEmailAndPassword(secondaryAuth, generatedEmail, password);
       const newUid = userCredential.user.uid;
-      
-      // Keluar dari sesi sekunder agar tidak bentrok dengan sesi Owner
       await signOut(secondaryAuth);
 
       const roleLower = role.toLowerCase();
+      const finalQrisCode = metodePembayaran === "QRIS_DIGITAL" ? qrisCode.trim() : "";
 
-      // 3. Simpan ke tenant_members/{groupId}/{uid}
+      // 1. Simpan ke tenant_members
       await set(ref(database, `tenant_members/${profile.groupId}/${newUid}`), {
         role: roleLower,
         active: true,
         addedAt: Date.now(),
         metodePembayaran: metodePembayaran,
+        qrisCode: finalQrisCode,
       });
 
-      // 4. Simpan profil lengkap ke users/{uid}
+      // 2. Simpan ke users
       await set(ref(database, `users/${newUid}`), {
         uid: newUid,
         username: cleanUsername,
@@ -170,16 +172,19 @@ export default function KaryawanPage() {
         groupId: profile.groupId,
         role: roleLower,
         isActive: true,
+        metodePembayaran: metodePembayaran,
+        qrisCode: finalQrisCode,
         createdAt: Date.now(),
       });
 
-      // Reset form & tutup modal
+      // Reset form
       setNama("");
       setPassword("");
       setRole("KASIR");
       setMetodePembayaran("TUNAI_QRIS_FISIK");
+      setQrisCode("");
       setIsModalOpen(false);
-      alert(`Pegawai "${cleanUsername}" berhasil ditambahkan!`);
+      alert(`Pegawai "${cleanUsername}" berhasil disimpan beserta konfigurasi QR-nya!`);
     } catch (error: any) {
       console.error("Gagal menambah pegawai:", error);
       alert(`Gagal menambah pegawai: ${error?.message || "Terjadi kesalahan"}`);
@@ -214,7 +219,7 @@ export default function KaryawanPage() {
                 </span>
               </div>
               <p className="text-sm text-slate-400 mt-1">
-                Data pegawai tersinkronisasi dari Group ID:{" "}
+                Kelola akun & integrasi QRIS untuk Group ID:{" "}
                 <span className="font-mono text-blue-400">{profile?.groupId || "-"}</span>
               </p>
             </div>
@@ -244,13 +249,6 @@ export default function KaryawanPage() {
             />
           </div>
 
-          {/* Pesan Error Jika Ada */}
-          {errorMessage && (
-            <div className="p-4 bg-red-500/10 border border-red-500/20 rounded-2xl text-red-400 text-sm">
-              {errorMessage}
-            </div>
-          )}
-
           {/* Tabel Daftar Pegawai */}
           <div className="bg-slate-900 rounded-2xl border border-slate-800 overflow-hidden shadow-xl">
             <div className="overflow-x-auto">
@@ -259,13 +257,14 @@ export default function KaryawanPage() {
                   <tr>
                     <th className="py-4 px-6">Nama Pegawai</th>
                     <th className="py-4 px-6">Jabatan / Role</th>
+                    <th className="py-4 px-6">Metode Pembayaran</th>
                     <th className="py-4 px-6">Status Akun</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-800/60">
                   {loadingData ? (
                     <tr>
-                      <td colSpan={3} className="text-center py-8 text-slate-500">
+                      <td colSpan={4} className="text-center py-8 text-slate-500">
                         <div className="flex items-center justify-center gap-2">
                           <div className="w-4 h-4 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin"></div>
                           Menyinkronkan data pegawai...
@@ -274,7 +273,7 @@ export default function KaryawanPage() {
                     </tr>
                   ) : filteredPegawai.length === 0 ? (
                     <tr>
-                      <td colSpan={3} className="text-center py-10 text-slate-500">
+                      <td colSpan={4} className="text-center py-10 text-slate-500">
                         <p className="text-slate-400 font-medium">Tidak ada data pegawai yang cocok.</p>
                       </td>
                     </tr>
@@ -303,6 +302,26 @@ export default function KaryawanPage() {
                           </span>
                         </td>
                         <td className="py-4 px-6">
+                          <div className="flex flex-col items-start gap-1">
+                            <span
+                              className={`px-2.5 py-1 text-xs font-medium rounded-md border ${
+                                item.metodePembayaran === "QRIS_DIGITAL"
+                                  ? "bg-blue-950/60 text-blue-300 border-blue-800/50"
+                                  : "bg-emerald-950/60 text-emerald-300 border-emerald-800/50"
+                              }`}
+                            >
+                              {item.metodePembayaran === "QRIS_DIGITAL"
+                                ? "QRIS Digital (Layar HP)"
+                                : "Tunai / QRIS Fisik"}
+                            </span>
+                            {item.qrisCode && (
+                              <span className="text-[10px] font-mono text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">
+                                ✓ Kode QR Terpasang
+                              </span>
+                            )}
+                          </div>
+                        </td>
+                        <td className="py-4 px-6">
                           <span
                             className={`inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-md border ${
                               item.status === "Aktif"
@@ -328,10 +347,10 @@ export default function KaryawanPage() {
         </main>
       </div>
 
-      {/* Modal Dialog Tambah Pegawai */}
+      {/* Modal Dialog Tambah Pegawai + Input Kode QR */}
       {isModalOpen && (
-        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-slate-900 border border-slate-800 rounded-3xl w-full max-w-md p-6 sm:p-7 shadow-2xl space-y-5 animate-in fade-in duration-200">
+        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-slate-900 border border-slate-800 rounded-3xl w-full max-w-md p-6 sm:p-7 shadow-2xl space-y-5 animate-in fade-in duration-200 my-8">
             <h3 className="text-xl font-bold text-white tracking-tight">Tambah Pegawai</h3>
 
             <form onSubmit={handleTambahPegawai} className="space-y-5">
@@ -426,6 +445,26 @@ export default function KaryawanPage() {
                     </span>
                   </label>
                 </div>
+
+                {/* Kotak Input Kode QR (Otomatis Muncul Saat QRIS Digital Dipilih) */}
+                {metodePembayaran === "QRIS_DIGITAL" && (
+                  <div className="pt-2">
+                    <label className="block text-xs font-semibold text-emerald-400 mb-1.5">
+                      Kode / String QRIS (Format EMVCo Payload) *
+                    </label>
+                    <textarea
+                      rows={3}
+                      required
+                      placeholder="Tempelkan kode QRIS di sini (Contoh: 00020101021126590014ID...)"
+                      value={qrisCode}
+                      onChange={(e) => setQrisCode(e.target.value)}
+                      className="w-full bg-slate-800 border border-emerald-500/40 rounded-2xl p-3 text-xs font-mono text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500"
+                    />
+                    <p className="text-[11px] text-slate-400 mt-1">
+                      Kode ini digunakan aplikasi Android kasir untuk membuat QRIS dinamis di layar HP.
+                    </p>
+                  </div>
+                )}
               </div>
 
               <div className="flex items-center justify-end gap-3 pt-3">
