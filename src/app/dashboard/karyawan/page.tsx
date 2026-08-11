@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/context/AuthContext";
 import Sidebar from "@/components/Sidebar";
@@ -47,8 +47,14 @@ export default function KaryawanPage() {
   const [password, setPassword] = useState("");
   const [role, setRole] = useState<"MANAGER" | "SUPERVISOR" | "KASIR" | "CUSTOMER">("KASIR");
   const [metodePembayaran, setMetodePembayaran] = useState<"TUNAI_QRIS_FISIK" | "QRIS_DIGITAL">("TUNAI_QRIS_FISIK");
+  
+  // State Gambar QR dari Galeri Laptop
+  const [qrisImagePreview, setQrisImagePreview] = useState<string | null>(null);
   const [qrisCode, setQrisCode] = useState("");
+  const [qrisFileName, setQrisFileName] = useState("");
+  const [isScanningQR, setIsScanningQR] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Data Realtime Firebase
   const [daftarPegawai, setDaftarPegawai] = useState<Pegawai[]>([]);
@@ -59,7 +65,7 @@ export default function KaryawanPage() {
     }
   }, [user, loading, router]);
 
-  // Sinkronisasi data asli
+  // Sinkronisasi data dari tenant_members & users
   useEffect(() => {
     if (!profile?.groupId) return;
 
@@ -121,6 +127,50 @@ export default function KaryawanPage() {
     return () => unsubscribe();
   }, [profile?.groupId]);
 
+  // Fungsi Membaca Foto QR yang Dipilih dari Galeri Laptop
+  const handlePilihFotoQR = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setQrisFileName(file.name);
+    setIsScanningQR(true);
+
+    const reader = new FileReader();
+    reader.onload = async (event) => {
+      const dataUrl = event.target?.result as string;
+      setQrisImagePreview(dataUrl);
+
+      // Coba pindai barcode secara otomatis dari browser jika didukung
+      if (typeof window !== "undefined" && "BarcodeDetector" in window) {
+        try {
+          const barcodeDetector = new (window as any).BarcodeDetector({ formats: ["qr_code"] });
+          const img = new Image();
+          img.src = dataUrl;
+          img.onload = async () => {
+            try {
+              const barcodes = await barcodeDetector.detect(img);
+              if (barcodes && barcodes.length > 0) {
+                setQrisCode(barcodes[0].rawValue);
+              } else {
+                setQrisCode(dataUrl);
+              }
+            } catch {
+              setQrisCode(dataUrl);
+            }
+            setIsScanningQR(false);
+          };
+        } catch {
+          setQrisCode(dataUrl);
+          setIsScanningQR(false);
+        }
+      } else {
+        setQrisCode(dataUrl);
+        setIsScanningQR(false);
+      }
+    };
+    reader.readAsDataURL(file);
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen bg-slate-950 text-slate-100 flex items-center justify-center font-sans">
@@ -134,13 +184,18 @@ export default function KaryawanPage() {
 
   if (!user) return null;
 
-  // Simpan Pegawai Baru + Kode QR
+  // Handler Simpan Pegawai Baru
   const handleTambahPegawai = async (e: React.FormEvent) => {
     e.preventDefault();
     const cleanUsername = nama.trim().toLowerCase().replace(/\s+/g, "");
 
     if (!cleanUsername || password.length < 8 || !profile?.groupId) {
       if (password.length < 8) alert("Password minimal harus 8 karakter!");
+      return;
+    }
+
+    if (metodePembayaran === "QRIS_DIGITAL" && !qrisCode) {
+      alert("Silakan pilih gambar/foto QRIS dari galeri laptop terlebih dahulu!");
       return;
     }
 
@@ -153,7 +208,7 @@ export default function KaryawanPage() {
       await signOut(secondaryAuth);
 
       const roleLower = role.toLowerCase();
-      const finalQrisCode = metodePembayaran === "QRIS_DIGITAL" ? qrisCode.trim() : "";
+      const finalQris = metodePembayaran === "QRIS_DIGITAL" ? qrisCode : "";
 
       // 1. Simpan ke tenant_members
       await set(ref(database, `tenant_members/${profile.groupId}/${newUid}`), {
@@ -161,7 +216,7 @@ export default function KaryawanPage() {
         active: true,
         addedAt: Date.now(),
         metodePembayaran: metodePembayaran,
-        qrisCode: finalQrisCode,
+        qrisCode: finalQris,
       });
 
       // 2. Simpan ke users
@@ -173,18 +228,20 @@ export default function KaryawanPage() {
         role: roleLower,
         isActive: true,
         metodePembayaran: metodePembayaran,
-        qrisCode: finalQrisCode,
+        qrisCode: finalQris,
         createdAt: Date.now(),
       });
 
-      // Reset form
+      // Reset form & tutup modal
       setNama("");
       setPassword("");
       setRole("KASIR");
       setMetodePembayaran("TUNAI_QRIS_FISIK");
+      setQrisImagePreview(null);
       setQrisCode("");
+      setQrisFileName("");
       setIsModalOpen(false);
-      alert(`Pegawai "${cleanUsername}" berhasil disimpan beserta konfigurasi QR-nya!`);
+      alert(`Pegawai "${cleanUsername}" berhasil disimpan beserta gambar QRIS-nya!`);
     } catch (error: any) {
       console.error("Gagal menambah pegawai:", error);
       alert(`Gagal menambah pegawai: ${error?.message || "Terjadi kesalahan"}`);
@@ -248,6 +305,13 @@ export default function KaryawanPage() {
               className="bg-transparent border-none outline-none text-sm text-white placeholder-slate-500 w-full"
             />
           </div>
+
+          {/* Pesan Error Jika Ada */}
+          {errorMessage && (
+            <div className="p-4 bg-red-500/10 border border-red-500/20 rounded-2xl text-red-400 text-sm">
+              {errorMessage}
+            </div>
+          )}
 
           {/* Tabel Daftar Pegawai */}
           <div className="bg-slate-900 rounded-2xl border border-slate-800 overflow-hidden shadow-xl">
@@ -316,7 +380,7 @@ export default function KaryawanPage() {
                             </span>
                             {item.qrisCode && (
                               <span className="text-[10px] font-mono text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">
-                                ✓ Kode QR Terpasang
+                                ✓ Foto QR Terpasang
                               </span>
                             )}
                           </div>
@@ -347,7 +411,7 @@ export default function KaryawanPage() {
         </main>
       </div>
 
-      {/* Modal Dialog Tambah Pegawai + Input Kode QR */}
+      {/* Modal Dialog Tambah Pegawai (Dengan Fitur Unggah Foto QR Galeri Laptop) */}
       {isModalOpen && (
         <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 overflow-y-auto">
           <div className="bg-slate-900 border border-slate-800 rounded-3xl w-full max-w-md p-6 sm:p-7 shadow-2xl space-y-5 animate-in fade-in duration-200 my-8">
@@ -446,23 +510,59 @@ export default function KaryawanPage() {
                   </label>
                 </div>
 
-                {/* Kotak Input Kode QR (Otomatis Muncul Saat QRIS Digital Dipilih) */}
+                {/* Input Pilih Foto QR dari Galeri Laptop */}
                 {metodePembayaran === "QRIS_DIGITAL" && (
-                  <div className="pt-2">
-                    <label className="block text-xs font-semibold text-emerald-400 mb-1.5">
-                      Kode / String QRIS (Format EMVCo Payload) *
+                  <div className="pt-2 space-y-2">
+                    <label className="block text-xs font-semibold text-emerald-400">
+                      Pilih Foto / Gambar QRIS dari Laptop:
                     </label>
-                    <textarea
-                      rows={3}
-                      required
-                      placeholder="Tempelkan kode QRIS di sini (Contoh: 00020101021126590014ID...)"
-                      value={qrisCode}
-                      onChange={(e) => setQrisCode(e.target.value)}
-                      className="w-full bg-slate-800 border border-emerald-500/40 rounded-2xl p-3 text-xs font-mono text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500"
+
+                    {/* Input File Tersembunyi */}
+                    <input
+                      type="file"
+                      ref={fileInputRef}
+                      accept="image/*"
+                      onChange={handlePilihFotoQR}
+                      className="hidden"
                     />
-                    <p className="text-[11px] text-slate-400 mt-1">
-                      Kode ini digunakan aplikasi Android kasir untuk membuat QRIS dinamis di layar HP.
-                    </p>
+
+                    {/* Kotak Klik Galeri Laptop */}
+                    <div
+                      onClick={() => fileInputRef.current?.click()}
+                      className="border-2 border-dashed border-slate-700 hover:border-emerald-500 bg-slate-800/50 hover:bg-slate-800 rounded-2xl p-4 text-center cursor-pointer transition-all flex flex-col items-center justify-center gap-2 group"
+                    >
+                      {qrisImagePreview ? (
+                        <div className="space-y-2">
+                          <img
+                            src={qrisImagePreview}
+                            alt="Preview QRIS"
+                            className="w-28 h-28 object-contain mx-auto rounded-xl bg-white p-2 border border-slate-700"
+                          />
+                          <p className="text-xs font-medium text-emerald-400">
+                            ✓ {qrisFileName || "Foto QR Berhasil Dipilih"}
+                          </p>
+                          <p className="text-[10px] text-slate-400 group-hover:text-white">
+                            Klik di sini untuk mengganti foto
+                          </p>
+                        </div>
+                      ) : (
+                        <>
+                          <div className="w-10 h-10 rounded-full bg-emerald-500/10 text-emerald-400 flex items-center justify-center group-hover:scale-110 transition-transform">
+                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                            </svg>
+                          </div>
+                          <div>
+                            <p className="text-xs font-semibold text-white group-hover:text-emerald-400">
+                              Klik untuk cari foto di galeri laptop
+                            </p>
+                            <p className="text-[11px] text-slate-500 mt-0.5">
+                              Format file JPG, PNG, atau WEBP
+                            </p>
+                          </div>
+                        </>
+                      )}
+                    </div>
                   </div>
                 )}
               </div>
@@ -478,7 +578,7 @@ export default function KaryawanPage() {
                 </button>
                 <button
                   type="submit"
-                  disabled={isSubmitting}
+                  disabled={isSubmitting || isScanningQR}
                   className="px-6 py-2.5 bg-emerald-500 hover:bg-emerald-600 text-slate-950 font-bold rounded-full text-sm uppercase transition-all shadow-lg shadow-emerald-500/20 active:scale-95 disabled:opacity-50"
                 >
                   {isSubmitting ? "MENYIMPAN..." : "SIMPAN"}
