@@ -24,8 +24,9 @@ export default function KaryawanPage() {
   const [searchTerm, setSearchTerm] = useState("");
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [loadingData, setLoadingData] = useState(true);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  // Form State Selaras Aplikasi HP
+  // Form State
   const [nama, setNama] = useState("");
   const [password, setPassword] = useState("");
   const [role, setRole] = useState<"MANAGER" | "SUPERVISOR" | "KASIR" | "CUSTOMER">("KASIR");
@@ -34,7 +35,6 @@ export default function KaryawanPage() {
   // Data Realtime Firebase
   const [daftarPegawai, setDaftarPegawai] = useState<Pegawai[]>([]);
 
-  // Proteksi Login
   useEffect(() => {
     if (!loading && !user) {
       router.push("/login");
@@ -45,25 +45,40 @@ export default function KaryawanPage() {
   useEffect(() => {
     if (!profile?.groupId) return;
 
+    setLoadingData(true);
+    setErrorMessage(null);
+
+    // Jalur utama database pegawai
     const pegawaiRef = ref(database, `pegawai/${profile.groupId}`);
-    const unsubscribe = onValue(pegawaiRef, (snapshot) => {
-      if (snapshot.exists()) {
-        const data = snapshot.val();
-        const list: Pegawai[] = Object.keys(data).map((key) => ({
-          id: key,
-          nama: data[key].nama || data[key].namaPanggilan || "Tanpa Nama",
-          password: data[key].password || "********",
-          role: data[key].role || "KASIR",
-          metodePembayaran: data[key].metodePembayaran || (data[key].isQrisDigital ? "QRIS_DIGITAL" : "TUNAI_QRIS_FISIK"),
-          status: data[key].status || "Aktif",
-          createdAt: data[key].createdAt,
-        }));
-        setDaftarPegawai(list);
-      } else {
-        setDaftarPegawai([]);
+
+    const unsubscribe = onValue(
+      pegawaiRef,
+      (snapshot) => {
+        if (snapshot.exists()) {
+          const data = snapshot.val();
+          const list: Pegawai[] = Object.keys(data).map((key) => ({
+            id: key,
+            nama: data[key].nama || data[key].namaPanggilan || data[key].name || "Tanpa Nama",
+            password: data[key].password || "********",
+            role: data[key].role || "KASIR",
+            metodePembayaran:
+              data[key].metodePembayaran ||
+              (data[key].isQrisDigital ? "QRIS_DIGITAL" : "TUNAI_QRIS_FISIK"),
+            status: data[key].status || "Aktif",
+            createdAt: data[key].createdAt,
+          }));
+          setDaftarPegawai(list);
+        } else {
+          setDaftarPegawai([]);
+        }
+        setLoadingData(false);
+      },
+      (error) => {
+        console.error("Firebase Error:", error);
+        setErrorMessage(`Gagal memuat data dari Firebase: ${error.message}`);
+        setLoadingData(false);
       }
-      setLoadingData(false);
-    });
+    );
 
     return () => unsubscribe();
   }, [profile?.groupId]);
@@ -81,7 +96,6 @@ export default function KaryawanPage() {
 
   if (!user) return null;
 
-  // Simpan Pegawai Baru
   const handleTambahPegawai = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!nama || password.length < 8 || !profile?.groupId) {
@@ -102,27 +116,26 @@ export default function KaryawanPage() {
         createdAt: Date.now(),
       });
 
-      // Reset Form & Tutup Modal
       setNama("");
       setPassword("");
       setRole("KASIR");
       setMetodePembayaran("TUNAI_QRIS_FISIK");
       setIsModalOpen(false);
-    } catch (error) {
+    } catch (error: any) {
       console.error("Gagal menambah pegawai:", error);
-      alert("Terjadi kesalahan saat menyimpan ke server Firebase.");
+      alert(`Terjadi kesalahan: ${error?.message || "Gagal menyimpan ke Firebase"}`);
     }
   };
 
-  // Hapus Pegawai
   const handleHapusPegawai = async (id: string, namaPegawai: string) => {
     if (!profile?.groupId) return;
     if (confirm(`Apakah Anda yakin ingin menghapus pegawai "${namaPegawai}"?`)) {
       try {
         const itemRef = ref(database, `pegawai/${profile.groupId}/${id}`);
         await remove(itemRef);
-      } catch (error) {
+      } catch (error: any) {
         console.error("Gagal menghapus:", error);
+        alert(`Gagal menghapus: ${error?.message}`);
       }
     }
   };
@@ -133,17 +146,13 @@ export default function KaryawanPage() {
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex font-sans selection:bg-emerald-500 selection:text-white">
-      {/* Sidebar Navigasi */}
       <Sidebar />
 
-      {/* Area Utama */}
       <div className="flex-1 flex flex-col min-w-0">
-        {/* Navbar Header */}
         <Navbar />
 
-        {/* Konten Halaman */}
         <main className="p-6 md:p-8 space-y-6 flex-1 overflow-y-auto">
-          {/* Header & Tombol Tambah */}
+          {/* Header */}
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-slate-900 p-6 rounded-2xl border border-slate-800 shadow-xl">
             <div>
               <div className="flex items-center gap-2">
@@ -185,6 +194,13 @@ export default function KaryawanPage() {
             />
           </div>
 
+          {/* Pesan Error Jika Ada */}
+          {errorMessage && (
+            <div className="p-4 bg-red-500/10 border border-red-500/20 rounded-2xl text-red-400 text-sm">
+              {errorMessage}
+            </div>
+          )}
+
           {/* Tabel Daftar Pegawai */}
           <div className="bg-slate-900 rounded-2xl border border-slate-800 overflow-hidden shadow-xl">
             <div className="overflow-x-auto">
@@ -202,13 +218,19 @@ export default function KaryawanPage() {
                   {loadingData ? (
                     <tr>
                       <td colSpan={5} className="text-center py-8 text-slate-500">
-                        Menyinkronkan data dengan Firebase...
+                        <div className="flex items-center justify-center gap-2">
+                          <div className="w-4 h-4 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin"></div>
+                          Menyinkronkan data dengan Firebase...
+                        </div>
                       </td>
                     </tr>
                   ) : filteredPegawai.length === 0 ? (
                     <tr>
-                      <td colSpan={5} className="text-center py-8 text-slate-500">
-                        Belum ada pegawai terdaftar pada toko ini.
+                      <td colSpan={5} className="text-center py-10 text-slate-500">
+                        <p className="text-slate-400 font-medium">Belum ada pegawai yang tersinkronisasi.</p>
+                        <p className="text-xs text-slate-600 mt-1">
+                          Klik tombol Tambah Pegawai di atas untuk membuat akun kasir pertama Anda.
+                        </p>
                       </td>
                     </tr>
                   ) : (
@@ -219,24 +241,28 @@ export default function KaryawanPage() {
                           <p className="text-[11px] font-mono text-slate-500">ID: {item.id}</p>
                         </td>
                         <td className="py-4 px-6">
-                          <span className={`px-2.5 py-1 text-xs font-semibold uppercase rounded-md border ${
-                            item.role === "MANAGER"
-                              ? "bg-purple-500/10 text-purple-400 border-purple-500/20"
-                              : item.role === "SUPERVISOR"
-                              ? "bg-amber-500/10 text-amber-400 border-amber-500/20"
-                              : item.role === "CUSTOMER"
-                              ? "bg-slate-500/10 text-slate-400 border-slate-500/20"
-                              : "bg-blue-500/10 text-blue-400 border-blue-500/20"
-                          }`}>
+                          <span
+                            className={`px-2.5 py-1 text-xs font-semibold uppercase rounded-md border ${
+                              item.role === "MANAGER"
+                                ? "bg-purple-500/10 text-purple-400 border-purple-500/20"
+                                : item.role === "SUPERVISOR"
+                                ? "bg-amber-500/10 text-amber-400 border-amber-500/20"
+                                : item.role === "CUSTOMER"
+                                ? "bg-slate-500/10 text-slate-400 border-slate-500/20"
+                                : "bg-blue-500/10 text-blue-400 border-blue-500/20"
+                            }`}
+                          >
                             {item.role}
                           </span>
                         </td>
                         <td className="py-4 px-6">
-                          <span className={`px-2.5 py-1 text-xs font-medium rounded-md border ${
-                            item.metodePembayaran === "QRIS_DIGITAL"
-                              ? "bg-blue-950/60 text-blue-300 border-blue-800/50"
-                              : "bg-emerald-950/60 text-emerald-300 border-emerald-800/50"
-                          }`}>
+                          <span
+                            className={`px-2.5 py-1 text-xs font-medium rounded-md border ${
+                              item.metodePembayaran === "QRIS_DIGITAL"
+                                ? "bg-blue-950/60 text-blue-300 border-blue-800/50"
+                                : "bg-emerald-950/60 text-emerald-300 border-emerald-800/50"
+                            }`}
+                          >
                             {item.metodePembayaran === "QRIS_DIGITAL"
                               ? "QRIS Digital (Layar HP)"
                               : "Tunai / QRIS Fisik (Meja)"}
@@ -266,14 +292,13 @@ export default function KaryawanPage() {
         </main>
       </div>
 
-      {/* Modal Dialog Tambah Pegawai (100% Sesuai Screenshot Android) */}
+      {/* Modal Dialog */}
       {isModalOpen && (
         <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-slate-900 border border-slate-800 rounded-3xl w-full max-w-md p-6 sm:p-7 shadow-2xl space-y-5 animate-in fade-in duration-200">
             <h3 className="text-xl font-bold text-white tracking-tight">Tambah Pegawai</h3>
 
             <form onSubmit={handleTambahPegawai} className="space-y-5">
-              {/* Input Nama Panggilan */}
               <div>
                 <input
                   type="text"
@@ -285,7 +310,6 @@ export default function KaryawanPage() {
                 />
               </div>
 
-              {/* Input Password */}
               <div>
                 <input
                   type="password"
@@ -298,7 +322,6 @@ export default function KaryawanPage() {
                 />
               </div>
 
-              {/* Pilihan Jabatan / Role */}
               <div className="space-y-2.5">
                 <p className="text-sm font-semibold text-slate-300">Pilih Jabatan / Role:</p>
                 <div className="space-y-2">
@@ -312,7 +335,13 @@ export default function KaryawanPage() {
                         onChange={() => setRole(r)}
                         className="w-4 h-4 text-emerald-500 bg-slate-800 border-slate-600 focus:ring-0 focus:ring-offset-0"
                       />
-                      <span className={`text-sm tracking-wide ${role === r ? "text-white font-medium" : "text-slate-400 group-hover:text-slate-200"}`}>
+                      <span
+                        className={`text-sm tracking-wide ${
+                          role === r
+                            ? "text-white font-medium"
+                            : "text-slate-400 group-hover:text-slate-200"
+                        }`}
+                      >
                         {r}
                       </span>
                     </label>
@@ -332,7 +361,13 @@ export default function KaryawanPage() {
                       onChange={() => setMetodePembayaran("TUNAI_QRIS_FISIK")}
                       className="w-4 h-4 text-emerald-500 bg-slate-800 border-slate-600 focus:ring-0 focus:ring-offset-0"
                     />
-                    <span className={`text-sm ${metodePembayaran === "TUNAI_QRIS_FISIK" ? "text-white font-medium" : "text-slate-400 group-hover:text-slate-200"}`}>
+                    <span
+                      className={`text-sm ${
+                        metodePembayaran === "TUNAI_QRIS_FISIK"
+                          ? "text-white font-medium"
+                          : "text-slate-400 group-hover:text-slate-200"
+                      }`}
+                    >
                       Tunai / QRIS Fisik (Akrilik di meja)
                     </span>
                   </label>
@@ -346,14 +381,19 @@ export default function KaryawanPage() {
                       onChange={() => setMetodePembayaran("QRIS_DIGITAL")}
                       className="w-4 h-4 text-emerald-500 bg-slate-800 border-slate-600 focus:ring-0 focus:ring-offset-0"
                     />
-                    <span className={`text-sm ${metodePembayaran === "QRIS_DIGITAL" ? "text-white font-medium" : "text-slate-400 group-hover:text-slate-200"}`}>
+                    <span
+                      className={`text-sm ${
+                        metodePembayaran === "QRIS_DIGITAL"
+                          ? "text-white font-medium"
+                          : "text-slate-400 group-hover:text-slate-200"
+                      }`}
+                    >
                       QRIS Digital (Muncul di layar HP)
                     </span>
                   </label>
                 </div>
               </div>
 
-              {/* Tombol Aksi Batal & Simpan */}
               <div className="flex items-center justify-end gap-3 pt-3">
                 <button
                   type="button"
