@@ -6,7 +6,9 @@ import { useAuth } from "@/context/AuthContext";
 import Sidebar from "@/components/Sidebar";
 import Navbar from "@/components/Navbar";
 import { database } from "@/lib/firebase/firebase";
-import { ref, onValue, get, set, update } from "firebase/database";
+import { ref, onValue, get, set } from "firebase/database";
+import { initializeApp, getApps } from "firebase/app";
+import { getAuth, createUserWithEmailAndPassword, signOut } from "firebase/auth";
 
 interface Pegawai {
   id: string;
@@ -16,6 +18,20 @@ interface Pegawai {
   metodePembayaran?: string;
   status: string;
 }
+
+// Inisialisasi Auth Sekunder agar sesi login Owner tidak terputus saat membuat akun kasir baru
+const firebaseConfig = {
+  apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
+  authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
+  databaseURL: process.env.NEXT_PUBLIC_FIREBASE_DATABASE_URL,
+  projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
+  storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
+  appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID,
+};
+
+const secondaryApp = getApps().find((a) => a.name === "SecondaryAuth") || initializeApp(firebaseConfig, "SecondaryAuth");
+const secondaryAuth = getAuth(secondaryApp);
 
 export default function KaryawanPage() {
   const router = useRouter();
@@ -41,7 +57,7 @@ export default function KaryawanPage() {
     }
   }, [user, loading, router]);
 
-  // Sinkronisasi data asli dari tenant_members & users
+  // Sinkronisasi data dari tenant_members & users
   useEffect(() => {
     if (!profile?.groupId) return;
 
@@ -117,18 +133,28 @@ export default function KaryawanPage() {
   // Handler Simpan Pegawai Baru
   const handleTambahPegawai = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!nama.trim() || password.length < 8 || !profile?.groupId) {
+    const cleanUsername = nama.trim().toLowerCase().replace(/\s+/g, "");
+    
+    if (!cleanUsername || password.length < 8 || !profile?.groupId) {
       if (password.length < 8) alert("Password minimal harus 8 karakter!");
       return;
     }
 
     setIsSubmitting(true);
     try {
-      // Buat UID unik untuk pegawai baru
-      const newUid = "usr_" + Math.random().toString(36).substring(2, 9) + Date.now().toString(36).substring(4);
+      // 1. Buat email format internal toko (username@cskasir.internal)
+      const generatedEmail = `${cleanUsername}_${profile.groupId.substring(5, 12)}@cskasir.internal`;
+      
+      // 2. Daftarkan akun baru ke Firebase Authentication
+      const userCredential = await createUserWithEmailAndPassword(secondaryAuth, generatedEmail, password);
+      const newUid = userCredential.user.uid;
+      
+      // Keluar dari sesi sekunder agar tidak bentrok dengan sesi Owner
+      await signOut(secondaryAuth);
+
       const roleLower = role.toLowerCase();
 
-      // 1. Simpan ke tenant_members/{groupId}/{uid}
+      // 3. Simpan ke tenant_members/{groupId}/{uid}
       await set(ref(database, `tenant_members/${profile.groupId}/${newUid}`), {
         role: roleLower,
         active: true,
@@ -136,10 +162,11 @@ export default function KaryawanPage() {
         metodePembayaran: metodePembayaran,
       });
 
-      // 2. Simpan ke users/{uid}
+      // 4. Simpan profil lengkap ke users/{uid}
       await set(ref(database, `users/${newUid}`), {
         uid: newUid,
-        username: nama.trim().toLowerCase(),
+        username: cleanUsername,
+        email: generatedEmail,
         groupId: profile.groupId,
         role: roleLower,
         isActive: true,
@@ -152,9 +179,10 @@ export default function KaryawanPage() {
       setRole("KASIR");
       setMetodePembayaran("TUNAI_QRIS_FISIK");
       setIsModalOpen(false);
+      alert(`Pegawai "${cleanUsername}" berhasil ditambahkan!`);
     } catch (error: any) {
       console.error("Gagal menambah pegawai:", error);
-      alert(`Terjadi kesalahan: ${error?.message || "Gagal menyimpan data"}`);
+      alert(`Gagal menambah pegawai: ${error?.message || "Terjadi kesalahan"}`);
     } finally {
       setIsSubmitting(false);
     }
@@ -174,7 +202,7 @@ export default function KaryawanPage() {
         <Navbar />
 
         <main className="p-6 md:p-8 space-y-6 flex-1 overflow-y-auto">
-          {/* Header & Tombol Tambah Pegawai */}
+          {/* Header */}
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-slate-900 p-6 rounded-2xl border border-slate-800 shadow-xl">
             <div>
               <div className="flex items-center gap-2">
