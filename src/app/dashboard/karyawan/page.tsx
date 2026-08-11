@@ -18,9 +18,15 @@ export default function KaryawanPage() {
   const router = useRouter();
   const { user, profile, loading } = useAuth();
   const [searchTerm, setSearchTerm] = useState("");
+  const [isModalOpen, setIsModalOpen] = useState(false);
 
-  // Data contoh awal kasir toko
-  const [daftarKaryawan] = useState<Karyawan[]>([
+  // Form State
+  const [namaBaru, setNamaBaru] = useState("");
+  const [emailBaru, setEmailBaru] = useState("");
+  const [roleBaru, setRoleBaru] = useState("KASIR");
+
+  // Daftar Karyawan
+  const [daftarKaryawan, setDaftarKaryawan] = useState<Karyawan[]>([
     {
       id: "KSR-001",
       nama: "Kasir Utama",
@@ -48,6 +54,29 @@ export default function KaryawanPage() {
   }
 
   if (!user) return null;
+
+  const handleTambahKaryawan = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!namaBaru || !emailBaru) return;
+
+    const newKaryawan: Karyawan = {
+      id: `KSR-00${daftarKaryawan.length + 1}`,
+      nama: namaBaru,
+      email: emailBaru,
+      role: roleBaru,
+      status: "Aktif",
+    };
+
+    setDaftarKaryawan([...daftarKaryawan, newKaryawan]);
+    setNamaBaru("");
+    setEmailBaru("");
+    setRoleBaru("KASIR");
+    setIsModalOpen(false);
+  };
+
+  const handleHapusKaryawan = (id: string) => {
+    setDaftarKaryawan(daftarKaryawan.filter((k) => k.id !== id));
+  };
 
   const filteredKaryawan = daftarKaryawan.filter(
     (k) =>
@@ -84,7 +113,10 @@ export default function KaryawanPage() {
               </p>
             </div>
 
-            <button className="inline-flex items-center gap-2 px-4 py-2.5 bg-emerald-500 hover:bg-emerald-600 text-slate-950 font-semibold rounded-xl text-sm transition-all shadow-lg shadow-emerald-500/20 active:scale-95">
+            <button
+              onClick={() => setIsModalOpen(true)}
+              className="inline-flex items-center gap-2 px-4 py-2.5 bg-emerald-500 hover:bg-emerald-600 text-slate-950 font-semibold rounded-xl text-sm transition-all shadow-lg shadow-emerald-500/20 active:scale-95"
+            >
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M12 4v16m8-8H4" />
               </svg>
@@ -138,10 +170,10 @@ export default function KaryawanPage() {
                         </span>
                       </td>
                       <td className="py-4 px-6 text-right space-x-2">
-                        <button className="text-xs text-slate-400 hover:text-slate-200 px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 transition-colors">
-                          Edit
-                        </button>
-                        <button className="text-xs text-red-400 hover:text-red-300 px-2 py-1 rounded bg-red-500/10 hover:bg-red-500/20 transition-colors">
+                        <button
+                          onClick={() => handleHapusKaryawan(item.id)}
+                          className="text-xs text-red-400 hover:text-red-300 px-2.5 py-1 rounded-lg bg-red-500/10 hover:bg-red-500/20 transition-colors"
+                        >
                           Hapus
                         </button>
                       </td>
@@ -153,6 +185,77 @@ export default function KaryawanPage() {
           </div>
         </main>
       </div>
+
+      {/* Modal Dialog Tambah Karyawan */}
+      {isModalOpen && (
+        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-md p-6 shadow-2xl space-y-5 animate-in fade-in duration-200">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-4">
+              <h3 className="text-lg font-bold text-white">Tambah Kasir Baru</h3>
+              <button
+                onClick={() => setIsModalOpen(false)}
+                className="text-slate-400 hover:text-white text-sm"
+              >
+                ✕
+              </button>
+            </div>
+
+            <form onSubmit={handleTambahKaryawan} className="space-y-4">
+              <div>
+                <label className="block text-xs font-medium text-slate-400 mb-1.5">Nama Lengkap</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="Contoh: Siti Rahma"
+                  value={namaBaru}
+                  onChange={(e) => setNamaBaru(e.target.value)}
+                  className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3.5 py-2.5 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-slate-400 mb-1.5">Email Login Kasir</label>
+                <input
+                  type="email"
+                  required
+                  placeholder="kasir2@toko.com"
+                  value={emailBaru}
+                  onChange={(e) => setEmailBaru(e.target.value)}
+                  className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3.5 py-2.5 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-slate-400 mb-1.5">Peran (Role)</label>
+                <select
+                  value={roleBaru}
+                  onChange={(e) => setRoleBaru(e.target.value)}
+                  className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3.5 py-2.5 text-sm text-white focus:outline-none focus:border-emerald-500"
+                >
+                  <option value="KASIR">Kasir</option>
+                  <option value="ADMIN">Admin Toko</option>
+                </select>
+              </div>
+
+              <div className="flex justify-end gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setIsModalOpen(false)}
+                  className="px-4 py-2 text-sm text-slate-400 hover:text-white transition-colors"
+                >
+                  Batal
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-2 bg-emerald-500 hover:bg-emerald-600 text-slate-950 font-semibold rounded-xl text-sm transition-all shadow-lg shadow-emerald-500/20"
+                >
+                  Simpan Karyawan
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
