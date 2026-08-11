@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useAuth } from "@/context/AuthContext";
 import Sidebar from "@/components/Sidebar";
 import Navbar from "@/components/Navbar";
-import { database } from "@/lib/firebase";
+import { database } from "@/lib/firebase/firebase";
 import { ref, onValue, push, set, remove } from "firebase/database";
 
 interface Pegawai {
