@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/context/AuthContext";
 import Sidebar from "@/components/Sidebar";
@@ -40,7 +40,7 @@ export default function ProdukPage() {
   const [isAdjustModalOpen, setIsAdjustModalOpen] = useState(false);
   const [isValuasiModalOpen, setIsValuasiModalOpen] = useState(false);
   
-  // State Form Tambah/Edit
+  // State Form
   const [selectedProduk, setSelectedProduk] = useState<Produk | null>(null);
   const [nama, setNama] = useState("");
   const [barcode, setBarcode] = useState("");
@@ -49,10 +49,11 @@ export default function ProdukPage() {
   const [stokAwal, setStokAwal] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // State Penyesuaian Stok
   const [adjustTab, setAdjustTab] = useState<"MASUK" | "KELUAR">("MASUK");
   const [adjustQty, setAdjustQty] = useState("");
   const [adjustModal, setAdjustModal] = useState("");
+
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (!loading && !user) router.push("/login");
@@ -70,9 +71,7 @@ export default function ProdukPage() {
         const list: Produk[] = Object.keys(data).map((key) => ({
           id: key,
           ...data[key],
-        })).filter(p => p.is_active !== false); // Sembunyikan yang Soft Delete
-        
-        // Urutkan berdasarkan nama
+        })).filter(p => p.is_active !== false); 
         list.sort((a, b) => a.nama_produk.localeCompare(b.nama_produk));
         setProdukList(list);
       } else {
@@ -86,14 +85,128 @@ export default function ProdukPage() {
 
   if (loading) return null;
 
-  // Format Helper
   const formatRupiah = (angka: number) => new Intl.NumberFormat("id-ID").format(angka);
   const cleanNumber = (val: string) => parseInt(val.replace(/\D/g, ""), 10) || 0;
 
-  // Valuasi Kalkulasi
   const totalModal = produkList.reduce((acc, curr) => acc + (curr.total_stok * curr.harga_modal), 0);
   const totalOmzet = produkList.reduce((acc, curr) => acc + (curr.total_stok * curr.harga_jual), 0);
   const proyeksiProfit = totalOmzet - totalModal;
+
+  // ==========================================
+  // FITUR EXPORT / IMPORT CSV 
+  // ==========================================
+  const handleExportCSV = () => {
+    let csv = "sep=;\nNama;Barcode;Jual;Modal;Stok\n";
+    produkList.forEach(p => {
+      const namaAman = p.nama_produk.replace(/;/g, " ");
+      const barcodeAman = p.barcode ? `'${p.barcode}` : "";
+      csv += `${namaAman};${barcodeAman};${p.harga_jual};${p.harga_modal};${p.total_stok}\n`;
+    });
+    
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.setAttribute("download", "Laporan_Stok_CSKasir.csv");
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  const handleImportCSV = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    
+    if (!file.name.toLowerCase().endsWith('.csv')) {
+      alert("⚠️ GAGAL: File harus berformat .csv!");
+      if (fileInputRef.current) fileInputRef.current.value = "";
+      return;
+    }
+    
+    setIsSubmitting(true);
+    const reader = new FileReader();
+    reader.onload = async (event) => {
+      try {
+        const text = event.target?.result as string;
+        const lines = text.split('\n');
+        let countNew = 0;
+        let countUpdate = 0;
+        const updates: any = {};
+        
+        // Peta barcode untuk ngecek apakah barang diupdate atau ditambah
+        const existingMap = new Map();
+        produkList.forEach(p => {
+          if (p.barcode) existingMap.set(p.barcode.toLowerCase(), p.id);
+        });
+
+        const ts = Date.now();
+
+        for (let i = 0; i < lines.length; i++) {
+          const line = lines[i].trim();
+          if (!line || line.startsWith("sep=") || line.startsWith("Nama;Barcode")) continue;
+          
+          const separator = line.includes(";") ? ";" : ",";
+          const t = line.split(separator);
+          
+          if (t.length >= 5) {
+            const namaProd = t[0].trim();
+            if (namaProd) {
+              const barcodeRaw = t[1].trim().replace(/'/g, "");
+              const barcodeKey = barcodeRaw.toLowerCase();
+              const jual = parseInt(t[2]) || 0;
+              const modal = parseInt(t[3]) || 0;
+              const stok = parseInt(t[4]) || 0;
+
+              if (barcodeKey && existingMap.has(barcodeKey)) {
+                // UPDATE BARANG LAMA
+                const existingId = existingMap.get(barcodeKey);
+                updates[`stok/${profile?.groupId}/${existingId}/nama_produk`] = namaProd;
+                updates[`stok/${profile?.groupId}/${existingId}/harga_jual`] = jual;
+                updates[`stok/${profile?.groupId}/${existingId}/harga_modal`] = modal;
+                countUpdate++;
+              } else {
+                // TAMBAH BARANG BARU
+                const newRefKey = push(ref(database, `stok/${profile?.groupId}`)).key;
+                const batchId = `B_${ts}_${Math.floor(Math.random() * 90 + 10)}`;
+                updates[`stok/${profile?.groupId}/${newRefKey}`] = {
+                  nama_produk: namaProd,
+                  barcode: barcodeRaw,
+                  harga_jual: jual,
+                  harga_modal: modal,
+                  total_stok: stok,
+                  is_active: true,
+                  batches: {
+                    [batchId]: {
+                      stok: stok,
+                      modal_batch: modal,
+                      expired: "2030-12-31",
+                      tgl_masuk: ts
+                    }
+                  }
+                };
+                if (barcodeKey) existingMap.set(barcodeKey, newRefKey);
+                countNew++;
+              }
+            }
+          }
+        }
+        
+        if (Object.keys(updates).length > 0) {
+           await update(ref(database), updates);
+        }
+        
+        alert(`Selesai: ${countNew} Barang Baru, ${countUpdate} Barang Diupdate`);
+      } catch (err) {
+        console.error(err);
+        alert("Gagal memproses file CSV.");
+      } finally {
+        setIsSubmitting(false);
+        if (fileInputRef.current) fileInputRef.current.value = "";
+      }
+    };
+    reader.readAsText(file);
+  };
+  // ==========================================
 
   // Handler Simpan Produk Baru
   const handleSimpanProduk = async (e: React.FormEvent) => {
@@ -166,7 +279,6 @@ export default function ProdukPage() {
         profit: jualL - modalL
       };
 
-      // Update harga modal di semua batch (menyesuaikan Android)
       if (selectedProduk.batches) {
         Object.keys(selectedProduk.batches).forEach(bId => {
           updates[`batches/${bId}/modal_batch`] = modalL;
@@ -211,7 +323,7 @@ export default function ProdukPage() {
         if (adjustTab === "MASUK") {
           const modalMasuk = cleanNumber(adjustModal);
           currentData.total_stok = stokDasar + qty;
-          currentData.harga_modal = modalMasuk; // Update modal utama
+          currentData.harga_modal = modalMasuk; 
           
           if (!currentData.batches) currentData.batches = {};
           currentData.batches[batchId] = {
@@ -221,9 +333,8 @@ export default function ProdukPage() {
             tgl_masuk: ts
           };
         } else {
-          // MODE KELUAR (FIFO)
           if (stokDasar < qty) {
-            return; // Abort transaction (kembalikan ke try-catch)
+            return; 
           }
           currentData.total_stok = stokDasar - qty;
           
@@ -281,12 +392,36 @@ export default function ProdukPage() {
               </h1>
               <p className="text-sm text-slate-400 mt-1">Kelola barang, harga, dan ketersediaan stok toko.</p>
             </div>
-            <div className="flex gap-2">
+            
+            {/* Input Tersembunyi untuk Import File CSV */}
+            <input 
+              type="file" 
+              ref={fileInputRef} 
+              accept=".csv" 
+              onChange={handleImportCSV} 
+              className="hidden" 
+            />
+
+            <div className="flex flex-wrap gap-2">
+              <button
+                onClick={() => fileInputRef.current?.click()}
+                className="px-3 py-2 bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 font-medium rounded-xl text-sm transition-all border border-blue-500/20"
+                title="Upload file CSV"
+              >
+                📥 Import CSV
+              </button>
+              <button
+                onClick={handleExportCSV}
+                className="px-3 py-2 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 font-medium rounded-xl text-sm transition-all border border-emerald-500/20"
+                title="Download laporan CSV"
+              >
+                📤 Export CSV
+              </button>
               <button
                 onClick={() => setIsValuasiModalOpen(true)}
-                className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-white font-medium rounded-xl text-sm transition-all border border-slate-700"
+                className="px-3 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 font-medium rounded-xl text-sm transition-all border border-slate-700"
               >
-                Valuasi Aset
+                📊 Valuasi Aset
               </button>
               <button
                 onClick={() => { resetForm(); setIsAddModalOpen(true); }}
