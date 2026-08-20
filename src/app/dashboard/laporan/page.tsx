@@ -16,7 +16,7 @@ export default function LaporanPage() {
   const [adjustmentList, setAdjustmentList] = useState<any[]>([]);
   const [produkMaster, setProdukMaster] = useState<any[]>([]);
   
-  const [filter, setFilter] = useState("Hari Ini");
+  const [filter, setFilter] = useState("Minggu Ini");
   const [searchQuery, setSearchQuery] = useState("");
   const [loadingData, setLoadingData] = useState(true);
 
@@ -36,7 +36,7 @@ export default function LaporanPage() {
     if (!loading && !user) router.push("/login");
   }, [user, loading, router]);
 
-  // Fetch Master Produk (Untuk hitung modal jika nol & restore stok saat void)
+  // Fetch Master Produk (Untuk modal)
   useEffect(() => {
     if (!profile?.groupId) return;
     const prodRef = ref(database, `stok/${profile.groupId}`);
@@ -48,15 +48,17 @@ export default function LaporanPage() {
     });
   }, [profile?.groupId]);
 
-  // Waktu Filter Logic
+  // 🔥 FIX 100% LOGIKA WAKTU ANDROID (JAVA CALENDAR)
   const getTimeRange = () => {
     const now = new Date();
     const start = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     const end = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
 
     if (filter === "Minggu Ini") {
-      const day = start.getDay();
-      const diff = start.getDate() - day + (day === 0 ? -6 : 1); 
+      // Di Android (id-ID), hari pertama adalah MINGGU.
+      // Di Javascript, start.getDay() mengembalikan 0 untuk Minggu.
+      const day = start.getDay(); 
+      const diff = start.getDate() - day; // Mundur ke hari Minggu
       start.setDate(diff);
     } else if (filter === "Bulan Ini") {
       start.setDate(1);
@@ -70,7 +72,6 @@ export default function LaporanPage() {
     return { start: start.getTime(), end: end.getTime() };
   };
 
-  // Fetch Transaksi & Adjustments
   useEffect(() => {
     if (!profile?.groupId) return;
     setLoadingData(true);
@@ -107,22 +108,24 @@ export default function LaporanPage() {
 
   const formatRupiah = (angka: number) => new Intl.NumberFormat("id-ID").format(angka || 0);
 
-  // Proses Data Laporan (Termasuk Piutang & Koreksi Harga)
+  // 🔥 FIX PERHITUNGAN TOTAL MURNI DARI DATABASE 
   const processedList = transaksiList.map(trx => {
     const koreksi = adjustmentList.filter(a => a.trxId === trx.id);
     const totalKoreksi = koreksi.reduce((sum, a) => sum + (Number(a.deltaTotal) || 0), 0);
     
-    const trueOriginalTotal = Object.values(trx.items || {}).reduce((sum: number, item: any) => sum + ((item.qty || 1) * (item.harga_jual || item.harga || 0)), 0);
-    const finalTotal = trueOriginalTotal + totalKoreksi;
+    // Total murni yang dikirim kasir ke Firebase, jangan dihitung manual
+    const totalAsliDB = Number(trx.totalHarga || trx.total || trx.bayar || 0);
+    const finalTotal = totalAsliDB + totalKoreksi;
+    
     const isVoid = trx.isVoid === true || trx.isVoid === "true";
     const status = trx.status || trx.statusTrx || "SELESAI";
     
-    let finalBayar = Number(trx.bayar) || 0;
+    let finalBayar = Number(trx.bayar || trx.uangBayar) || 0;
     if (status !== "UTANG" && status !== "PIUTANG" && finalBayar < finalTotal) {
         finalBayar = finalTotal;
     }
 
-    return { ...trx, finalTotal, isVoid, finalBayar, koreksi, trueOriginalTotal, status };
+    return { ...trx, finalTotal, isVoid, finalBayar, koreksi, status };
   }).filter(t => 
     t.id.toLowerCase().includes(searchQuery.toLowerCase()) || 
     (t.kasirName || "").toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -131,13 +134,12 @@ export default function LaporanPage() {
 
   const totalOmzetLayar = processedList.filter(t => !t.isVoid).reduce((sum, t) => sum + t.finalTotal, 0);
 
-  // Profit Calculation
   const calculateProfit = () => {
     let omzetSum = 0;
     let modalSum = 0;
     processedList.filter(t => !t.isVoid).forEach(trx => {
         omzetSum += trx.finalTotal;
-        let trxModal = trx.totalModal || 0;
+        let trxModal = Number(trx.totalModal || 0);
         
         if (trxModal === 0 && trx.items) {
             Object.values(trx.items).forEach((item: any) => {
@@ -152,7 +154,6 @@ export default function LaporanPage() {
     return { omzetSum, modalSum, profit: omzetSum - modalSum };
   };
 
-  // Best Seller Logic (Top 10, 30 Hari Terakhir)
   const getBestSeller = () => {
       const mapTerlaris: Record<string, number> = {};
       const thirtyDaysAgo = Date.now() - (30 * 24 * 60 * 60 * 1000);
@@ -169,7 +170,6 @@ export default function LaporanPage() {
       return Object.entries(mapTerlaris).sort((a, b) => b[1] - a[1]).slice(0, 10);
   };
 
-  // Export CSV
   const handleExportCSV = () => {
       let csv = "sep=;\nTanggal;Jam;No Transaksi;Kasir;Status;Nama Barang;Harga Satuan;Qty;Subtotal\n";
       processedList.forEach(trx => {
@@ -201,7 +201,6 @@ export default function LaporanPage() {
       document.body.removeChild(link);
   };
 
-  // Void Transaksi (Hardcore Offline-First replica)
   const handleVoid = async () => {
       if (!voidReason.trim()) return alert("Alasan wajib diisi!");
       setIsProcessing(true);
@@ -214,7 +213,6 @@ export default function LaporanPage() {
               voidAt: Date.now()
           });
 
-          // Restore Stock Logic
           if (selectedTrx.items) {
               const updates: any = {};
               for (const key of Object.keys(selectedTrx.items)) {
@@ -243,7 +241,6 @@ export default function LaporanPage() {
       setIsProcessing(false);
   };
 
-  // Pelunasan Piutang
   const handlePiutang = async () => {
       const bayar = Number(cicilan.replace(/\D/g, ''));
       if (bayar <= 0) return alert("Nominal tidak valid!");
@@ -334,16 +331,12 @@ export default function LaporanPage() {
               ) : (
                   processedList.map(trx => {
                       const isPiutang = trx.status === "UTANG" || trx.status === "PIUTANG" || (trx.finalBayar < trx.finalTotal);
-                      const isMinus = trx.isStockConflict === true || trx.isStockConflict === "true";
                       const date = new Date(trx.timestamp || trx.waktu);
                       const timeStr = `${date.getDate()}/${date.getMonth()+1}/${date.getFullYear()} • ${date.getHours()}:${String(date.getMinutes()).padStart(2, '0')}`;
-                      
                       let cardColor = trx.isVoid ? "bg-red-950/40 border-red-900/50" : "bg-slate-900 border-slate-800";
                       
                       return (
                           <div key={trx.id} onClick={() => setSelectedTrx(trx)} className={`p-5 rounded-2xl border cursor-pointer hover:brightness-110 transition-all ${cardColor} relative overflow-hidden`}>
-                              
-                              {/* Watermarks */}
                               {trx.isVoid && <div className="absolute inset-0 flex items-center justify-center opacity-10 pointer-events-none"><span className="text-6xl font-black text-red-500 tracking-widest uppercase transform -rotate-12">BATAL</span></div>}
                               {!trx.isVoid && isPiutang && <div className="absolute inset-0 flex items-center justify-center opacity-5 pointer-events-none"><span className="text-5xl font-black text-orange-500 tracking-widest uppercase transform -rotate-12">PIUTANG</span></div>}
 
@@ -354,8 +347,6 @@ export default function LaporanPage() {
                                               Rp {formatRupiah(trx.finalTotal)}
                                           </p>
                                           <p className="text-sm font-medium text-slate-400">👤 {trx.kasirName?.split("|||")[0] || "Kasir"}</p>
-                                          
-                                          {isMinus && !trx.isVoid && <span className="bg-red-600 text-white text-[10px] font-bold px-2 py-0.5 rounded-full">Stok Minus</span>}
                                           {isPiutang && !trx.isVoid && <span className="bg-orange-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-full">Piutang</span>}
                                       </div>
                                       <p className="text-xs text-slate-500 font-mono mt-2">
@@ -383,7 +374,6 @@ export default function LaporanPage() {
                 <button onClick={() => setSelectedTrx(null)} className="text-slate-500 hover:text-white">✕</button>
             </div>
             
-            {/* Banner Piutang */}
             {(selectedTrx.status === "UTANG" || selectedTrx.status === "PIUTANG") && !selectedTrx.isVoid && (
                 <div onClick={() => setShowPiutang(true)} className="bg-orange-500/20 border border-orange-500/50 p-4 rounded-xl mb-4 cursor-pointer hover:bg-orange-500/30 transition-all flex justify-between items-center">
                     <div>
@@ -410,7 +400,6 @@ export default function LaporanPage() {
                 })}
             </div>
 
-            {/* Riwayat Koreksi */}
             {selectedTrx.koreksi && selectedTrx.koreksi.length > 0 && (
                 <div className="bg-emerald-950/30 border border-emerald-900/50 rounded-xl p-4 mb-6">
                     <p className="text-xs font-bold text-emerald-400 mb-2">Riwayat Koreksi / Retur:</p>
