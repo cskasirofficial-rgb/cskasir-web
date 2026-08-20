@@ -102,23 +102,39 @@ export default function KasirPage() {
   const kembalian = nominalBayar - totalAkhir;
   const isUtang = kembalian < 0;
 
-  const addToCart = (produk: any, qtyTambah = 1) => {
-    const existing = cart.find(c => c.id === produk.id);
-    const sisaStok = (produk.total_stok || 0) - (existing?.qty || 0);
+  // 🔥 HELPER AMBIL DATA MASTER GUDANG
+  const getMasterProduk = (id: string, nama?: string) => {
+    return produkList.find(p => p.id === id || (nama && (p.nama_produk || "").toLowerCase() === nama.toLowerCase()));
+  };
+
+  // 🔥 SISTEM PENAMBAHAN BARANG (VALIDASI STOK GUDANG MURNI)
+  const addToCart = (item: any, qtyTambah = 1) => {
+    const master = getMasterProduk(item.id, item.nama || item.nama_produk);
+    const targetId = master ? master.id : item.id;
+    const maxStok = master ? Number(master.total_stok ?? master.stok ?? 0) : 9999;
     
-    if (sisaStok < qtyTambah) return alert("Stok Habis!");
+    const existing = cart.find(c => c.id === targetId);
+    const currentQty = existing ? existing.qty : 0;
     
+    if ((currentQty + qtyTambah) > maxStok) {
+      return alert("Stok Habis / Melebihi batas stok toko!");
+    }
+
     if (existing) {
-      setCart(cart.map(c => c.id === produk.id ? { ...c, qty: c.qty + qtyTambah } : c));
+      setCart(cart.map(c => c.id === targetId ? { ...c, qty: c.qty + qtyTambah } : c));
     } else {
+      const namaBarang = master ? master.nama_produk : (item.nama || item.nama_produk || "Produk");
+      const hargaJual = Number(item.hargaJual || item.harga_jual || (master ? master.harga_jual : 0));
+      const hargaModal = Number(item.hargaModal || item.harga_modal || (master ? master.harga_modal : 0));
+      
       setCart([...cart, { 
-        id: produk.id, 
-        nama: produk.nama_produk || "Produk", 
-        hargaJual: Number(produk.harga_jual || 0), 
-        hargaNormal: Number(produk.harga_jual || 0), 
-        hargaModal: Number(produk.harga_modal || 0), 
+        id: targetId, 
+        nama: namaBarang, 
+        hargaJual: hargaJual, 
+        hargaNormal: master ? Number(master.harga_jual || hargaJual) : hargaJual, 
+        hargaModal: hargaModal, 
         qty: qtyTambah, 
-        isCustomPrice: false 
+        isCustomPrice: item.isCustomPrice || false 
       }]);
     }
   };
@@ -126,9 +142,15 @@ export default function KasirPage() {
   const updateCartQty = (id: string, newQty: number) => {
     if (newQty <= 0) {
       setCart(cart.filter(c => c.id !== id));
-    } else {
-      setCart(cart.map(c => c.id === id ? { ...c, qty: newQty } : c));
+      return;
     }
+    const master = getMasterProduk(id);
+    const maxStok = master ? Number(master.total_stok ?? master.stok ?? 0) : 9999;
+    
+    if (newQty > maxStok) {
+      return alert("Jumlah melebihi stok yang tersedia!");
+    }
+    setCart(cart.map(c => c.id === id ? { ...c, qty: newQty } : c));
   };
 
   const updateCartPrice = (id: string, newPrice: number) => {
@@ -247,14 +269,11 @@ export default function KasirPage() {
 
   return (
     <div className="h-screen w-screen bg-slate-950 text-slate-100 flex font-sans selection:bg-emerald-500 selection:text-white overflow-hidden">
-      {/* SIDEBAR TERKUNCI */}
       <Sidebar />
       
-      {/* KONTEN KANAN TERKUNCI PERSIS TINGGI SCREEN */}
       <div className="flex-1 flex flex-col min-w-0 h-full overflow-hidden">
         <Navbar />
         
-        {/* AREA KERJA KASIR (ZERO PAGE SCROLL) */}
         <main className="flex-1 flex flex-col md:flex-row min-h-0 overflow-hidden">
             
           {/* AREA KIRI: KATALOG BARANG */}
@@ -262,7 +281,7 @@ export default function KasirPage() {
             {editMode && (
               <div className="bg-orange-500/20 border border-orange-500/50 p-3.5 rounded-xl mb-3 flex justify-between items-center shrink-0">
                 <p className="text-orange-400 font-bold text-xs md:text-sm">⚠️ MODE EDIT KOREKSI AKTIF (Trx: #{String(editMode.trxId).slice(-5)})</p>
-                <button onClick={() => { setEditMode(null); setCart([]); }} className="text-xs bg-red-500 text-white px-3 py-1 rounded-lg font-bold hover:bg-red-600">Batal Edit</button>
+                <button onClick={() => { setEditMode(null); setCart([]); }} className="text-xs bg-red-500 text-white px-3 py-1.5 rounded-lg font-bold hover:bg-red-600">Batal Edit</button>
               </div>
             )}
             
@@ -294,7 +313,7 @@ export default function KasirPage() {
                           <span className="font-bold text-sm min-w-[20px] text-center">{qtyDiKeranjang}</span>
                         </>
                       )}
-                      <button onClick={() => addToCart(p)} disabled={isHabis} className="w-7 h-7 rounded-lg bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 font-bold hover:bg-emerald-500 hover:text-slate-950 transition-all">+</button>
+                      <button onClick={() => addToCart(p, 1)} disabled={isHabis} className="w-7 h-7 rounded-lg bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 font-bold hover:bg-emerald-500 hover:text-slate-950 transition-all">+</button>
                     </div>
                   </div>
                 );
@@ -302,7 +321,7 @@ export default function KasirPage() {
             </div>
           </div>
 
-          {/* AREA KANAN: KERANJANG BELANJA (FOOTER SELALU TERLIHAT) */}
+          {/* AREA KANAN: KERANJANG BELANJA */}
           <div className="w-full md:w-96 bg-slate-900/90 flex flex-col h-full min-h-0 border-l border-slate-800 shrink-0">
             {/* Header Keranjang */}
             <div className="p-3.5 bg-slate-900 border-b border-slate-800 flex justify-between items-center shrink-0">
@@ -342,7 +361,7 @@ export default function KasirPage() {
               )}
             </div>
 
-            {/* FOOTER KERANJANG (PINNED DI BAWAH MONITOR TANPA SCROLL) */}
+            {/* FOOTER KERANJANG */}
             <div className="p-3.5 bg-slate-900 border-t border-slate-800 shrink-0 space-y-2.5">
               <div className="flex gap-2">
                 <button onClick={() => setShowBiayaDialog(true)} className="flex-1 py-1.5 border border-orange-500/40 text-orange-400 rounded-lg text-xs font-semibold bg-orange-500/10 hover:bg-orange-500/20 truncate">
@@ -366,7 +385,6 @@ export default function KasirPage() {
                 <p className="text-lg md:text-xl font-black text-emerald-400">Rp {formatRupiah(totalAkhir)}</p>
               </div>
 
-              {/* TOMBOL BAYAR / SIMPAN KOREKSI (SELALU KELIHATAN) */}
               <button 
                 disabled={cart.length === 0} 
                 onClick={() => setShowPay(true)} 
@@ -456,7 +474,7 @@ export default function KasirPage() {
               </>
             ) : (
               <div className="text-center p-4 bg-blue-500/10 rounded-2xl mb-4 border border-blue-500/30">
-                <p className="text-blue-400 font-bold text-xs mb-0.5">Arahkan Pelanggan ke QRIS</p>
+                <p className="text-blue-400 font-bold text-sm mb-0.5">Arahkan Pelanggan ke QRIS</p>
                 <p className="text-[11px] text-slate-400">Tagihan akan dicatat lunas otomatis.</p>
               </div>
             )}
