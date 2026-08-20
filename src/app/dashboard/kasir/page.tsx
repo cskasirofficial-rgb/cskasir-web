@@ -34,6 +34,11 @@ export default function KasirPage() {
   const [showBiayaDialog, setShowBiayaDialog] = useState(false);
   const [showEditPrice, setShowEditPrice] = useState<any>(null);
   const [inputHargaBaru, setInputHargaBaru] = useState("");
+  
+  // 🔥 STATE KETIK JUMLAH MANUAL (MIRROR ANDROID)
+  const [showManualQty, setShowManualQty] = useState<any>(null);
+  const [inputManualQty, setInputManualQty] = useState("");
+
   const [showSuccess, setShowSuccess] = useState<any>(null);
   const [isProcessing, setIsProcessing] = useState(false);
 
@@ -102,12 +107,10 @@ export default function KasirPage() {
   const kembalian = nominalBayar - totalAkhir;
   const isUtang = kembalian < 0;
 
-  // 🔥 HELPER AMBIL DATA MASTER GUDANG
   const getMasterProduk = (id: string, nama?: string) => {
     return produkList.find(p => p.id === id || (nama && (p.nama_produk || "").toLowerCase() === nama.toLowerCase()));
   };
 
-  // 🔥 SISTEM PENAMBAHAN BARANG (VALIDASI STOK GUDANG MURNI)
   const addToCart = (item: any, qtyTambah = 1) => {
     const master = getMasterProduk(item.id, item.nama || item.nama_produk);
     const targetId = master ? master.id : item.id;
@@ -148,9 +151,56 @@ export default function KasirPage() {
     const maxStok = master ? Number(master.total_stok ?? master.stok ?? 0) : 9999;
     
     if (newQty > maxStok) {
-      return alert("Jumlah melebihi stok yang tersedia!");
+      return alert(`Jumlah melebihi stok toko (Maks: ${maxStok})!`);
     }
     setCart(cart.map(c => c.id === id ? { ...c, qty: newQty } : c));
+  };
+
+  // 🔥 BUKA DIALOG KETIK JUMLAH MANUAL
+  const openManualQtyDialog = (item: any) => {
+    const master = getMasterProduk(item.id, item.nama || item.nama_produk);
+    const maxStok = master ? Number(master.total_stok ?? master.stok ?? 0) : 9999;
+    const currentQty = cart.find(c => c.id === item.id)?.qty || item.qty || 1;
+    
+    setShowManualQty({
+      id: item.id,
+      nama: master ? master.nama_produk : (item.nama || item.nama_produk || "Produk"),
+      maxStok: maxStok,
+      currentQty: currentQty
+    });
+    setInputManualQty(String(currentQty));
+  };
+
+  // 🔥 SIMPAN JUMLAH DARI DIALOG MANUAL
+  const saveManualQty = () => {
+    if (!showManualQty) return;
+    const q = Number(inputManualQty.replace(/\D/g, ''));
+    
+    if (q <= 0) {
+      updateCartQty(showManualQty.id, 0);
+    } else {
+      if (q > showManualQty.maxStok) {
+        return alert(`Jumlah melebihi stok yang tersedia (Maks: ${showManualQty.maxStok})!`);
+      }
+      const existing = cart.find(c => c.id === showManualQty.id);
+      if (existing) {
+        setCart(cart.map(c => c.id === showManualQty.id ? { ...c, qty: q } : c));
+      } else {
+        const master = getMasterProduk(showManualQty.id);
+        if (master) {
+          setCart([...cart, {
+            id: master.id,
+            nama: master.nama_produk,
+            hargaJual: Number(master.harga_jual || 0),
+            hargaNormal: Number(master.harga_jual || 0),
+            hargaModal: Number(master.harga_modal || 0),
+            qty: q,
+            isCustomPrice: false
+          }]);
+        }
+      }
+    }
+    setShowManualQty(null);
   };
 
   const updateCartPrice = (id: string, newPrice: number) => {
@@ -285,7 +335,6 @@ export default function KasirPage() {
               </div>
             )}
             
-            {/* Input Pencarian */}
             <div className="bg-slate-900 p-3 rounded-xl border border-slate-800 flex items-center gap-3 mb-3 shrink-0">
               <span className="text-base">🔍</span>
               <input type="text" placeholder="Cari Nama Barang / Barcode..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="bg-transparent border-none outline-none text-sm text-white w-full" />
@@ -310,7 +359,15 @@ export default function KasirPage() {
                       {qtyDiKeranjang > 0 && (
                         <>
                           <button onClick={() => updateCartQty(p.id, qtyDiKeranjang - 1)} className="w-7 h-7 rounded-lg bg-slate-800 text-red-400 font-bold hover:bg-slate-700">-</button>
-                          <span className="font-bold text-sm min-w-[20px] text-center">{qtyDiKeranjang}</span>
+                          
+                          {/* 🔥 ANGKA BISA DIKLIK LANGSUNG UNTUK KETIK MANUAL */}
+                          <span 
+                            onClick={() => openManualQtyDialog(p)}
+                            className="font-black text-sm min-w-[28px] text-center bg-slate-800 hover:bg-slate-700 text-emerald-400 px-2 py-1 rounded-lg cursor-pointer border border-slate-700 shadow-sm"
+                            title="Klik untuk ketik jumlah langsung"
+                          >
+                            {qtyDiKeranjang}
+                          </span>
                         </>
                       )}
                       <button onClick={() => addToCart(p, 1)} disabled={isHabis} className="w-7 h-7 rounded-lg bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 font-bold hover:bg-emerald-500 hover:text-slate-950 transition-all">+</button>
@@ -323,13 +380,11 @@ export default function KasirPage() {
 
           {/* AREA KANAN: KERANJANG BELANJA */}
           <div className="w-full md:w-96 bg-slate-900/90 flex flex-col h-full min-h-0 border-l border-slate-800 shrink-0">
-            {/* Header Keranjang */}
             <div className="p-3.5 bg-slate-900 border-b border-slate-800 flex justify-between items-center shrink-0">
               <h2 className="text-base font-bold text-white">Keranjang Belanja</h2>
               <span className="text-xs font-semibold bg-slate-800 px-2.5 py-0.5 rounded-full text-slate-400">{cart.reduce((s,c)=>s+c.qty,0)} Item</span>
             </div>
             
-            {/* Items Keranjang Scroll Mandiri */}
             <div className="flex-1 min-h-0 overflow-y-auto p-3.5 space-y-2.5">
               {cart.map(c => (
                 <div key={c.id} className="border-b border-slate-800/80 pb-2.5">
@@ -347,7 +402,16 @@ export default function KasirPage() {
                     </div>
                     <div className="flex items-center gap-1">
                       <button onClick={() => updateCartQty(c.id, c.qty - 1)} className="w-5 h-5 bg-slate-800 hover:bg-slate-700 rounded text-white font-bold text-xs">-</button>
-                      <span className="w-5 text-center text-white font-semibold text-xs">{c.qty}</span>
+                      
+                      {/* 🔥 ANGKA DI KERANJANG JUGA BISA DIKLIK UNTUK KETIK MANUAL */}
+                      <span 
+                        onClick={() => openManualQtyDialog(c)}
+                        className="min-w-[24px] text-center text-emerald-400 font-bold text-xs bg-slate-800 hover:bg-slate-700 py-0.5 px-1 rounded cursor-pointer border border-slate-700"
+                        title="Klik untuk ketik jumlah langsung"
+                      >
+                        {c.qty}
+                      </span>
+
                       <button onClick={() => addToCart(c, 1)} className="w-5 h-5 bg-slate-800 hover:bg-slate-700 rounded text-white font-bold text-xs">+</button>
                     </div>
                   </div>
@@ -396,6 +460,32 @@ export default function KasirPage() {
           </div>
         </main>
       </div>
+
+      {/* ============================================================== */}
+      {/* 🔥 MODAL KETIK JUMLAH MANUAL (PERSIS DIALOG ANDROID) */}
+      {/* ============================================================== */}
+      {showManualQty && (
+        <div className="fixed inset-0 bg-slate-950/80 z-50 flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-xs p-5 shadow-2xl">
+            <h3 className="text-sm font-bold text-white mb-1">Jumlah {showManualQty.nama}</h3>
+            <p className="text-xs text-slate-400 mb-3">Stok tersedia: <span className="text-emerald-400 font-semibold">{showManualQty.maxStok}</span></p>
+            
+            <input 
+              type="number" 
+              value={inputManualQty} 
+              onChange={(e) => setInputManualQty(e.target.value)} 
+              placeholder="Ketik jumlah..." 
+              autoFocus
+              className="w-full bg-slate-800 border border-slate-700 rounded-xl p-3 text-emerald-400 text-2xl font-black mb-4 outline-none text-center" 
+            />
+            
+            <div className="flex gap-2">
+              <button onClick={() => setShowManualQty(null)} className="flex-1 py-2.5 bg-slate-800 text-slate-300 font-bold rounded-xl text-xs">BATAL</button>
+              <button onClick={saveManualQty} className="flex-1 py-2.5 bg-emerald-500 hover:bg-emerald-600 text-slate-950 font-black rounded-xl text-xs shadow-md">OK</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* MODAL PILIH PELANGGAN */}
       {showCustomerSearch && (
@@ -474,7 +564,7 @@ export default function KasirPage() {
               </>
             ) : (
               <div className="text-center p-4 bg-blue-500/10 rounded-2xl mb-4 border border-blue-500/30">
-                <p className="text-blue-400 font-bold text-sm mb-0.5">Arahkan Pelanggan ke QRIS</p>
+                <p className="text-blue-400 font-bold text-xs mb-0.5">Arahkan Pelanggan ke QRIS</p>
                 <p className="text-[11px] text-slate-400">Tagihan akan dicatat lunas otomatis.</p>
               </div>
             )}
