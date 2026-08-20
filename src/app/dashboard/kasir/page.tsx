@@ -246,29 +246,34 @@ export default function KasirPage() {
   };
 
   return (
-    <div className="h-screen bg-slate-950 text-slate-100 flex font-sans selection:bg-emerald-500 selection:text-white overflow-hidden">
+    <div className="h-screen w-screen bg-slate-950 text-slate-100 flex font-sans selection:bg-emerald-500 selection:text-white overflow-hidden">
+      {/* SIDEBAR TERKUNCI */}
       <Sidebar />
-      <div className="flex-1 flex flex-col min-w-0 h-screen overflow-hidden">
+      
+      {/* KONTEN KANAN TERKUNCI PERSIS TINGGI SCREEN */}
+      <div className="flex-1 flex flex-col min-w-0 h-full overflow-hidden">
         <Navbar />
         
-        {/* MAIN CONTAINER TERKUNCI (H-SCREEN RESPONSIVE) */}
-        <main className="flex-1 flex flex-col md:flex-row overflow-hidden">
+        {/* AREA KERJA KASIR (ZERO PAGE SCROLL) */}
+        <main className="flex-1 flex flex-col md:flex-row min-h-0 overflow-hidden">
             
           {/* AREA KIRI: KATALOG BARANG */}
-          <div className="flex-1 p-6 flex flex-col overflow-hidden border-r border-slate-800">
+          <div className="flex-1 p-4 md:p-6 flex flex-col min-h-0 overflow-hidden border-r border-slate-800">
             {editMode && (
-              <div className="bg-orange-500/20 border border-orange-500/50 p-4 rounded-xl mb-4 flex justify-between items-center shrink-0">
-                <p className="text-orange-400 font-bold text-sm">⚠️ MODE EDIT KOREKSI AKTIF (Trx: #{String(editMode.trxId).slice(-5)})</p>
-                <button onClick={() => { setEditMode(null); setCart([]); }} className="text-xs bg-red-500 text-white px-3 py-1.5 rounded-lg font-bold hover:bg-red-600">Batal Edit</button>
+              <div className="bg-orange-500/20 border border-orange-500/50 p-3.5 rounded-xl mb-3 flex justify-between items-center shrink-0">
+                <p className="text-orange-400 font-bold text-xs md:text-sm">⚠️ MODE EDIT KOREKSI AKTIF (Trx: #{String(editMode.trxId).slice(-5)})</p>
+                <button onClick={() => { setEditMode(null); setCart([]); }} className="text-xs bg-red-500 text-white px-3 py-1 rounded-lg font-bold hover:bg-red-600">Batal Edit</button>
               </div>
             )}
-            <div className="bg-slate-900 p-3.5 rounded-2xl border border-slate-800 flex items-center gap-3 mb-4 shrink-0">
-              <span className="text-lg">🔍</span>
+            
+            {/* Input Pencarian */}
+            <div className="bg-slate-900 p-3 rounded-xl border border-slate-800 flex items-center gap-3 mb-3 shrink-0">
+              <span className="text-base">🔍</span>
               <input type="text" placeholder="Cari Nama Barang / Barcode..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="bg-transparent border-none outline-none text-sm text-white w-full" />
             </div>
 
-            {/* List Barang Scrollable */}
-            <div className="flex-1 overflow-y-auto pr-2 space-y-3">
+            {/* List Barang Scroll Mandiri */}
+            <div className="flex-1 min-h-0 overflow-y-auto pr-1 space-y-2.5">
               {filteredProduk.map(p => {
                 const inCart = cart.find(c => c.id === p.id);
                 const qtyDiKeranjang = inCart?.qty || 0;
@@ -276,20 +281,20 @@ export default function KasirPage() {
                 const isHabis = sisaStok <= 0;
                 
                 return (
-                  <div key={p.id} className={`p-4 rounded-2xl flex justify-between items-center ${isHabis ? 'bg-slate-900/50 opacity-50' : 'bg-slate-900'} border border-slate-800 transition-all`}>
+                  <div key={p.id} className={`p-3.5 rounded-xl flex justify-between items-center ${isHabis ? 'bg-slate-900/50 opacity-50' : 'bg-slate-900'} border border-slate-800 transition-all`}>
                     <div>
-                      <p className="font-bold text-white text-base">{p.nama_produk}</p>
-                      <p className="text-emerald-400 font-semibold text-sm">Rp {formatRupiah(p.harga_jual)}</p>
-                      <p className="text-xs text-slate-500 mt-1">Stok sisa: {sisaStok}</p>
+                      <p className="font-bold text-white text-sm md:text-base">{p.nama_produk}</p>
+                      <p className="text-emerald-400 font-semibold text-xs md:text-sm">Rp {formatRupiah(p.harga_jual)}</p>
+                      <p className="text-[11px] text-slate-500 mt-0.5">Stok sisa: {sisaStok}</p>
                     </div>
-                    <div className="flex items-center gap-3">
+                    <div className="flex items-center gap-2">
                       {qtyDiKeranjang > 0 && (
                         <>
-                          <button onClick={() => updateCartQty(p.id, qtyDiKeranjang - 1)} className="w-8 h-8 rounded-full bg-slate-800 text-red-400 font-bold hover:bg-slate-700">-</button>
-                          <span className="font-bold text-base min-w-[20px] text-center">{qtyDiKeranjang}</span>
+                          <button onClick={() => updateCartQty(p.id, qtyDiKeranjang - 1)} className="w-7 h-7 rounded-lg bg-slate-800 text-red-400 font-bold hover:bg-slate-700">-</button>
+                          <span className="font-bold text-sm min-w-[20px] text-center">{qtyDiKeranjang}</span>
                         </>
                       )}
-                      <button onClick={() => addToCart(p)} disabled={isHabis} className="w-8 h-8 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 font-bold hover:bg-emerald-500 hover:text-slate-950 transition-all">+</button>
+                      <button onClick={() => addToCart(p)} disabled={isHabis} className="w-7 h-7 rounded-lg bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 font-bold hover:bg-emerald-500 hover:text-slate-950 transition-all">+</button>
                     </div>
                   </div>
                 );
@@ -297,21 +302,21 @@ export default function KasirPage() {
             </div>
           </div>
 
-          {/* AREA KANAN: KERANJANG TERKUNCI (STICKY FOOTER) */}
-          <div className="w-full md:w-96 bg-slate-900 flex flex-col h-full border-l border-slate-800 shrink-0">
+          {/* AREA KANAN: KERANJANG BELANJA (FOOTER SELALU TERLIHAT) */}
+          <div className="w-full md:w-96 bg-slate-900/90 flex flex-col h-full min-h-0 border-l border-slate-800 shrink-0">
             {/* Header Keranjang */}
-            <div className="p-4 bg-slate-900 border-b border-slate-800 flex justify-between items-center shrink-0">
-              <h2 className="text-lg font-bold text-white">Keranjang</h2>
-              <span className="text-xs font-semibold bg-slate-800 px-2.5 py-1 rounded-full text-slate-400">{cart.reduce((s,c)=>s+c.qty,0)} Item</span>
+            <div className="p-3.5 bg-slate-900 border-b border-slate-800 flex justify-between items-center shrink-0">
+              <h2 className="text-base font-bold text-white">Keranjang Belanja</h2>
+              <span className="text-xs font-semibold bg-slate-800 px-2.5 py-0.5 rounded-full text-slate-400">{cart.reduce((s,c)=>s+c.qty,0)} Item</span>
             </div>
             
-            {/* Items Keranjang Scrollable */}
-            <div className="flex-1 overflow-y-auto p-4 space-y-3">
+            {/* Items Keranjang Scroll Mandiri */}
+            <div className="flex-1 min-h-0 overflow-y-auto p-3.5 space-y-2.5">
               {cart.map(c => (
-                <div key={c.id} className="border-b border-slate-800/80 pb-3">
-                  <div className="flex justify-between items-start mb-1.5">
-                    <p className="font-bold text-sm text-white">{c.nama}</p>
-                    <p className="font-bold text-sm text-emerald-400">Rp {formatRupiah(c.qty * c.hargaJual)}</p>
+                <div key={c.id} className="border-b border-slate-800/80 pb-2.5">
+                  <div className="flex justify-between items-start mb-1">
+                    <p className="font-bold text-xs md:text-sm text-white">{c.nama}</p>
+                    <p className="font-bold text-xs md:text-sm text-emerald-400">Rp {formatRupiah(c.qty * c.hargaJual)}</p>
                   </div>
                   <div className="flex justify-between items-center text-xs text-slate-400">
                     <div className="flex items-center gap-1.5 cursor-pointer hover:text-yellow-400" onClick={() => {
@@ -321,27 +326,27 @@ export default function KasirPage() {
                       <p className={c.isCustomPrice ? "text-yellow-500 font-bold" : ""}>@ Rp {formatRupiah(c.hargaJual)}</p>
                       <span className="text-[10px] bg-slate-800 px-1.5 py-0.5 rounded text-slate-300">✎ Edit</span>
                     </div>
-                    <div className="flex items-center gap-1.5">
-                      <button onClick={() => updateCartQty(c.id, c.qty - 1)} className="w-6 h-6 bg-slate-800 hover:bg-slate-700 rounded text-white font-bold">-</button>
-                      <span className="w-6 text-center text-white font-semibold">{c.qty}</span>
-                      <button onClick={() => addToCart(c, 1)} className="w-6 h-6 bg-slate-800 hover:bg-slate-700 rounded text-white font-bold">+</button>
+                    <div className="flex items-center gap-1">
+                      <button onClick={() => updateCartQty(c.id, c.qty - 1)} className="w-5 h-5 bg-slate-800 hover:bg-slate-700 rounded text-white font-bold text-xs">-</button>
+                      <span className="w-5 text-center text-white font-semibold text-xs">{c.qty}</span>
+                      <button onClick={() => addToCart(c, 1)} className="w-5 h-5 bg-slate-800 hover:bg-slate-700 rounded text-white font-bold text-xs">+</button>
                     </div>
                   </div>
                 </div>
               ))}
               {cart.length === 0 && (
-                <div className="text-center py-16 text-slate-500">
-                  <p className="text-4xl mb-2">🛒</p>
-                  <p className="text-sm font-medium">Keranjang masih kosong</p>
+                <div className="text-center py-12 text-slate-500">
+                  <p className="text-3xl mb-1">🛒</p>
+                  <p className="text-xs font-medium">Keranjang masih kosong</p>
                 </div>
               )}
             </div>
 
-            {/* FOOTER KERANJANG (SELALU KELIHATAN DI BAWAH) */}
-            <div className="p-4 bg-slate-900 border-t border-slate-800 shrink-0 space-y-3">
+            {/* FOOTER KERANJANG (PINNED DI BAWAH MONITOR TANPA SCROLL) */}
+            <div className="p-3.5 bg-slate-900 border-t border-slate-800 shrink-0 space-y-2.5">
               <div className="flex gap-2">
-                <button onClick={() => setShowBiayaDialog(true)} className="flex-1 py-1.5 border border-orange-500/40 text-orange-400 rounded-lg text-xs font-semibold bg-orange-500/10 hover:bg-orange-500/20">
-                  + Biaya Lain
+                <button onClick={() => setShowBiayaDialog(true)} className="flex-1 py-1.5 border border-orange-500/40 text-orange-400 rounded-lg text-xs font-semibold bg-orange-500/10 hover:bg-orange-500/20 truncate">
+                  + Biaya
                 </button>
                 <button onClick={() => setShowCustomerSearch(true)} className="flex-1 py-1.5 border border-blue-500/40 text-blue-400 rounded-lg text-xs font-semibold bg-blue-500/10 hover:bg-blue-500/20 truncate px-2">
                   {selectedCustomer ? `👤 ${selectedCustomer.name}` : editMode?.customerName ? `👤 ${editMode.customerName}` : "👤 + Pelanggan"}
@@ -356,16 +361,16 @@ export default function KasirPage() {
                 </div>
               )}
 
-              <div className="flex justify-between items-center pt-1">
-                <p className="text-slate-400 text-sm font-semibold">Total Tagihan</p>
-                <p className="text-xl font-black text-emerald-400">Rp {formatRupiah(totalAkhir)}</p>
+              <div className="flex justify-between items-center pt-0.5">
+                <p className="text-slate-400 text-xs font-semibold">Total Tagihan</p>
+                <p className="text-lg md:text-xl font-black text-emerald-400">Rp {formatRupiah(totalAkhir)}</p>
               </div>
 
-              {/* TOMBOL BAYAR / SIMPAN KOREKSI UTAMA */}
+              {/* TOMBOL BAYAR / SIMPAN KOREKSI (SELALU KELIHATAN) */}
               <button 
                 disabled={cart.length === 0} 
                 onClick={() => setShowPay(true)} 
-                className={`w-full py-3.5 ${editMode ? 'bg-orange-500 hover:bg-orange-600' : 'bg-emerald-500 hover:bg-emerald-600'} disabled:bg-slate-800 disabled:text-slate-600 text-slate-950 font-black text-base rounded-xl shadow-lg transition-all`}
+                className={`w-full py-3 ${editMode ? 'bg-orange-500 hover:bg-orange-600' : 'bg-emerald-500 hover:bg-emerald-600'} disabled:bg-slate-800 disabled:text-slate-600 text-slate-950 font-black text-sm md:text-base rounded-xl shadow-lg transition-all`}
               >
                 {editMode ? "SIMPAN KOREKSI" : "BAYAR"}
               </button>
@@ -378,23 +383,23 @@ export default function KasirPage() {
       {showCustomerSearch && (
         <div className="fixed inset-0 bg-slate-950/80 z-50 flex items-center justify-center p-4">
           <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-sm p-5 shadow-2xl">
-            <div className="flex justify-between items-center mb-4">
-              <h3 className="text-base font-bold text-white">Pilih Pelanggan</h3>
+            <div className="flex justify-between items-center mb-3">
+              <h3 className="text-sm font-bold text-white">Pilih Pelanggan</h3>
               <button onClick={() => setShowCustomerSearch(false)} className="text-slate-400 hover:text-white">✕</button>
             </div>
-            <input type="text" placeholder="Cari nama / no hp..." value={customerSearchQuery} onChange={(e) => setCustomerSearchQuery(e.target.value)} className="w-full bg-slate-800 border border-slate-700 rounded-xl p-3 text-white text-sm mb-3 outline-none" />
-            <div className="max-h-48 overflow-y-auto space-y-2 mb-4">
+            <input type="text" placeholder="Cari nama / no hp..." value={customerSearchQuery} onChange={(e) => setCustomerSearchQuery(e.target.value)} className="w-full bg-slate-800 border border-slate-700 rounded-xl p-2.5 text-white text-xs mb-3 outline-none" />
+            <div className="max-h-48 overflow-y-auto space-y-2 mb-3">
               {customers.filter(c => (c.name || "").toLowerCase().includes(customerSearchQuery.toLowerCase())).map(c => (
-                <div key={c.id} onClick={() => { setSelectedCustomer(c); setShowCustomerSearch(false); }} className="p-3 rounded-xl bg-slate-800/60 hover:bg-slate-800 border border-slate-700/50 cursor-pointer flex justify-between items-center">
+                <div key={c.id} onClick={() => { setSelectedCustomer(c); setShowCustomerSearch(false); }} className="p-2.5 rounded-xl bg-slate-800/60 hover:bg-slate-800 border border-slate-700/50 cursor-pointer flex justify-between items-center">
                   <div>
-                    <p className="font-bold text-sm text-white">{c.name}</p>
-                    <p className="text-xs text-slate-400">{c.phoneNumber || "-"}</p>
+                    <p className="font-bold text-xs text-white">{c.name}</p>
+                    <p className="text-[11px] text-slate-400">{c.phoneNumber || "-"}</p>
                   </div>
-                  <span className="text-xs text-emerald-400 font-semibold">{c.totalPoints || 0} Poin</span>
+                  <span className="text-[11px] text-emerald-400 font-semibold">{c.totalPoints || 0} Poin</span>
                 </div>
               ))}
             </div>
-            <button onClick={() => { setSelectedCustomer(null); setShowCustomerSearch(false); }} className="w-full py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs font-bold">
+            <button onClick={() => { setSelectedCustomer(null); setShowCustomerSearch(false); }} className="w-full py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs font-bold">
               Tanpa Pelanggan (Umum)
             </button>
           </div>
@@ -404,23 +409,23 @@ export default function KasirPage() {
       {/* MODAL TAMBAH BIAYA */}
       {showBiayaDialog && (
         <div className="fixed inset-0 bg-slate-950/80 z-50 flex items-center justify-center p-4">
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-sm p-5 shadow-2xl space-y-4">
-            <h3 className="text-base font-bold text-white">Tambah Biaya Tambahan</h3>
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-sm p-5 shadow-2xl space-y-3">
+            <h3 className="text-sm font-bold text-white">Tambah Biaya Tambahan</h3>
             <div>
               <label className="text-xs text-slate-400 block mb-1">Biaya Ongkir (Rp)</label>
-              <input type="number" value={biayaOngkir || ""} onChange={(e) => setBiayaOngkir(Number(e.target.value))} placeholder="0" className="w-full bg-slate-800 rounded-xl p-3 text-white text-sm border border-slate-700 outline-none" />
+              <input type="number" value={biayaOngkir || ""} onChange={(e) => setBiayaOngkir(Number(e.target.value))} placeholder="0" className="w-full bg-slate-800 rounded-xl p-2.5 text-white text-xs border border-slate-700 outline-none" />
             </div>
             <div>
               <label className="text-xs text-slate-400 block mb-1">Biaya Admin (Rp)</label>
-              <input type="number" value={biayaAdmin || ""} onChange={(e) => setBiayaAdmin(Number(e.target.value))} placeholder="0" className="w-full bg-slate-800 rounded-xl p-3 text-white text-sm border border-slate-700 outline-none" />
+              <input type="number" value={biayaAdmin || ""} onChange={(e) => setBiayaAdmin(Number(e.target.value))} placeholder="0" className="w-full bg-slate-800 rounded-xl p-2.5 text-white text-xs border border-slate-700 outline-none" />
             </div>
             <div>
               <label className="text-xs text-slate-400 block mb-1">Biaya Lain-lain (Rp)</label>
-              <input type="number" value={biayaLainnya || ""} onChange={(e) => setBiayaLainnya(Number(e.target.value))} placeholder="0" className="w-full bg-slate-800 rounded-xl p-3 text-white text-sm border border-slate-700 outline-none" />
+              <input type="number" value={biayaLainnya || ""} onChange={(e) => setBiayaLainnya(Number(e.target.value))} placeholder="0" className="w-full bg-slate-800 rounded-xl p-2.5 text-white text-xs border border-slate-700 outline-none" />
             </div>
-            <div className="flex gap-2 pt-2">
-              <button onClick={() => setShowBiayaDialog(false)} className="flex-1 py-2.5 bg-slate-800 text-slate-300 rounded-xl text-xs font-bold">TUTUP</button>
-              <button onClick={() => setShowBiayaDialog(false)} className="flex-1 py-2.5 bg-emerald-500 text-slate-950 rounded-xl text-xs font-bold">SIMPAN</button>
+            <div className="flex gap-2 pt-1">
+              <button onClick={() => setShowBiayaDialog(false)} className="flex-1 py-2 bg-slate-800 text-slate-300 rounded-xl text-xs font-bold">TUTUP</button>
+              <button onClick={() => setShowBiayaDialog(false)} className="flex-1 py-2 bg-emerald-500 text-slate-950 rounded-xl text-xs font-bold">SIMPAN</button>
             </div>
           </div>
         </div>
@@ -429,36 +434,36 @@ export default function KasirPage() {
       {/* MODAL PEMBAYARAN */}
       {showPay && (
         <div className="fixed inset-0 bg-slate-950/80 z-50 flex items-center justify-center p-4">
-          <div className="bg-slate-900 border border-slate-800 rounded-3xl w-full max-w-sm p-6 shadow-2xl">
-            <h3 className="text-lg font-bold text-white mb-3">Rincian Pembayaran</h3>
-            <div className="flex justify-between items-center mb-4 bg-slate-800/60 p-3.5 rounded-2xl border border-slate-700/50">
-              <p className="text-slate-400 text-sm">Total Tagihan</p>
-              <p className="text-xl font-black text-emerald-400">Rp {formatRupiah(totalAkhir)}</p>
+          <div className="bg-slate-900 border border-slate-800 rounded-3xl w-full max-w-sm p-5 shadow-2xl">
+            <h3 className="text-base font-bold text-white mb-2.5">Rincian Pembayaran</h3>
+            <div className="flex justify-between items-center mb-3 bg-slate-800/60 p-3 rounded-2xl border border-slate-700/50">
+              <p className="text-slate-400 text-xs">Total Tagihan</p>
+              <p className="text-lg font-black text-emerald-400">Rp {formatRupiah(totalAkhir)}</p>
             </div>
             
-            <div className="flex gap-2 mb-4">
+            <div className="flex gap-2 mb-3">
               <button onClick={() => setMetodeBayar("cash")} className={`flex-1 py-2 rounded-xl font-bold text-xs border ${metodeBayar === 'cash' ? 'bg-emerald-500 text-slate-950 border-emerald-500' : 'bg-transparent text-slate-400 border-slate-700'}`}>Tunai (Cash)</button>
               <button onClick={() => setMetodeBayar("qris")} className={`flex-1 py-2 rounded-xl font-bold text-xs border ${metodeBayar === 'qris' ? 'bg-blue-500 text-white border-blue-500' : 'bg-transparent text-slate-400 border-slate-700'}`}>QRIS</button>
             </div>
 
             {metodeBayar === "cash" ? (
               <>
-                <input type="text" placeholder="Masukkan Uang Diterima..." value={uangBayar} onChange={(e) => setUangBayar(e.target.value.replace(/\D/g, ''))} className="w-full bg-slate-800 border border-slate-700 rounded-xl p-3.5 text-white text-lg font-bold mb-3 outline-none" />
-                <div className="flex justify-between items-center mb-5 px-1">
+                <input type="text" placeholder="Masukkan Uang Diterima..." value={uangBayar} onChange={(e) => setUangBayar(e.target.value.replace(/\D/g, ''))} className="w-full bg-slate-800 border border-slate-700 rounded-xl p-3 text-white text-base font-bold mb-2.5 outline-none" />
+                <div className="flex justify-between items-center mb-4 px-1">
                   <p className="font-semibold text-xs text-slate-400">{isUtang ? "Sisa Piutang (Kurang)" : "Kembalian"}</p>
-                  <p className={`text-base font-black ${isUtang ? 'text-orange-400' : 'text-emerald-400'}`}>Rp {formatRupiah(Math.abs(kembalian))}</p>
+                  <p className={`text-sm font-black ${isUtang ? 'text-orange-400' : 'text-emerald-400'}`}>Rp {formatRupiah(Math.abs(kembalian))}</p>
                 </div>
               </>
             ) : (
-              <div className="text-center p-5 bg-blue-500/10 rounded-2xl mb-5 border border-blue-500/30">
-                <p className="text-blue-400 font-bold text-sm mb-1">Arahkan Pelanggan ke QRIS</p>
-                <p className="text-xs text-slate-400">Tagihan akan dicatat lunas otomatis.</p>
+              <div className="text-center p-4 bg-blue-500/10 rounded-2xl mb-4 border border-blue-500/30">
+                <p className="text-blue-400 font-bold text-xs mb-0.5">Arahkan Pelanggan ke QRIS</p>
+                <p className="text-[11px] text-slate-400">Tagihan akan dicatat lunas otomatis.</p>
               </div>
             )}
 
-            <div className="flex gap-2.5">
-              <button onClick={() => setShowPay(false)} disabled={isProcessing} className="flex-1 py-3.5 bg-slate-800 text-slate-300 font-bold rounded-xl text-xs">BATAL</button>
-              <button onClick={prosesPembayaran} disabled={isProcessing} className={`flex-1 py-3.5 font-black rounded-xl text-xs text-white ${isUtang ? 'bg-orange-500 hover:bg-orange-600' : 'bg-emerald-500 hover:bg-emerald-600'}`}>
+            <div className="flex gap-2">
+              <button onClick={() => setShowPay(false)} disabled={isProcessing} className="flex-1 py-2.5 bg-slate-800 text-slate-300 font-bold rounded-xl text-xs">BATAL</button>
+              <button onClick={prosesPembayaran} disabled={isProcessing} className={`flex-1 py-2.5 font-black rounded-xl text-xs text-white ${isUtang ? 'bg-orange-500 hover:bg-orange-600' : 'bg-emerald-500 hover:bg-emerald-600'}`}>
                 {isProcessing ? "MEMPROSES..." : isUtang ? "SIMPAN UTANG" : "SELESAIKAN"}
               </button>
             </div>
@@ -469,23 +474,23 @@ export default function KasirPage() {
       {/* MODAL EDIT HARGA BARANG */}
       {showEditPrice && (
         <div className="fixed inset-0 bg-slate-950/80 z-50 flex items-center justify-center p-4">
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-sm p-5 shadow-2xl">
-            <h3 className="text-base font-bold text-white mb-1">Ubah Harga Satuan</h3>
-            <p className="text-xs text-slate-400 mb-4">{showEditPrice.nama} (Normal: Rp {formatRupiah(showEditPrice.hargaNormal)})</p>
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-sm p-4 shadow-2xl">
+            <h3 className="text-sm font-bold text-white mb-1">Ubah Harga Satuan</h3>
+            <p className="text-xs text-slate-400 mb-3">{showEditPrice.nama} (Normal: Rp {formatRupiah(showEditPrice.hargaNormal)})</p>
             
             <input 
               type="number" 
               value={inputHargaBaru} 
               onChange={(e) => setInputHargaBaru(e.target.value)} 
-              className="w-full bg-slate-800 border border-slate-700 rounded-xl p-3 text-yellow-400 text-lg font-bold mb-4 outline-none" 
+              className="w-full bg-slate-800 border border-slate-700 rounded-xl p-2.5 text-yellow-400 text-base font-bold mb-3 outline-none" 
             />
             
             <div className="flex gap-2">
-              <button onClick={() => setShowEditPrice(null)} className="flex-1 py-2.5 bg-slate-800 text-slate-300 font-bold rounded-xl text-xs">BATAL</button>
+              <button onClick={() => setShowEditPrice(null)} className="flex-1 py-2 bg-slate-800 text-slate-300 font-bold rounded-xl text-xs">BATAL</button>
               <button onClick={() => {
                 const p = Number(inputHargaBaru);
                 if (p > 0) updateCartPrice(showEditPrice.id, p);
-              }} className="flex-1 py-2.5 bg-yellow-500 text-slate-950 font-black rounded-xl text-xs">SIMPAN</button>
+              }} className="flex-1 py-2 bg-yellow-500 text-slate-950 font-black rounded-xl text-xs">SIMPAN</button>
             </div>
           </div>
         </div>
@@ -494,12 +499,12 @@ export default function KasirPage() {
       {/* MODAL SUCCESS */}
       {showSuccess && (
         <div className="fixed inset-0 bg-slate-950/80 z-50 flex items-center justify-center p-4">
-          <div className="bg-slate-900 border border-emerald-500/30 rounded-3xl w-full max-w-sm p-6 shadow-2xl text-center">
-            <div className="w-16 h-16 bg-emerald-500/20 text-emerald-400 rounded-full flex items-center justify-center text-3xl mx-auto mb-3 border border-emerald-500/40">✓</div>
-            <h3 className="text-xl font-black text-white mb-1">Transaksi Sukses!</h3>
-            <p className="text-slate-400 font-mono text-xs mb-5">ID: #{String(showSuccess.trxId).slice(-6)}</p>
+          <div className="bg-slate-900 border border-emerald-500/30 rounded-3xl w-full max-w-sm p-5 shadow-2xl text-center">
+            <div className="w-14 h-14 bg-emerald-500/20 text-emerald-400 rounded-full flex items-center justify-center text-2xl mx-auto mb-2.5 border border-emerald-500/40">✓</div>
+            <h3 className="text-lg font-black text-white mb-1">Transaksi Sukses!</h3>
+            <p className="text-slate-400 font-mono text-xs mb-4">ID: #{String(showSuccess.trxId).slice(-6)}</p>
             
-            <button onClick={resetKasir} className="w-full py-3 bg-emerald-500 hover:bg-emerald-600 text-slate-950 font-black rounded-xl text-sm shadow-lg">
+            <button onClick={resetKasir} className="w-full py-2.5 bg-emerald-500 hover:bg-emerald-600 text-slate-950 font-black rounded-xl text-xs shadow-lg">
               SELESAI & KEMBALI
             </button>
           </div>
