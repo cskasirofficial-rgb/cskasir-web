@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/context/AuthContext";
 import Sidebar from "@/components/Sidebar";
@@ -36,7 +36,6 @@ export default function LaporanPage() {
     if (!loading && !user) router.push("/login");
   }, [user, loading, router]);
 
-  // Fetch Master Produk (Untuk modal)
   useEffect(() => {
     if (!profile?.groupId) return;
     const prodRef = ref(database, `stok/${profile.groupId}`);
@@ -48,17 +47,14 @@ export default function LaporanPage() {
     });
   }, [profile?.groupId]);
 
-  // 🔥 FIX 100% LOGIKA WAKTU ANDROID (JAVA CALENDAR)
   const getTimeRange = () => {
     const now = new Date();
     const start = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     const end = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
 
     if (filter === "Minggu Ini") {
-      // Di Android (id-ID), hari pertama adalah MINGGU.
-      // Di Javascript, start.getDay() mengembalikan 0 untuk Minggu.
       const day = start.getDay(); 
-      const diff = start.getDate() - day; // Mundur ke hari Minggu
+      const diff = start.getDate() - day;
       start.setDate(diff);
     } else if (filter === "Bulan Ini") {
       start.setDate(1);
@@ -108,12 +104,10 @@ export default function LaporanPage() {
 
   const formatRupiah = (angka: number) => new Intl.NumberFormat("id-ID").format(angka || 0);
 
-  // 🔥 FIX PERHITUNGAN TOTAL MURNI DARI DATABASE 
   const processedList = transaksiList.map(trx => {
     const koreksi = adjustmentList.filter(a => a.trxId === trx.id);
     const totalKoreksi = koreksi.reduce((sum, a) => sum + (Number(a.deltaTotal) || 0), 0);
     
-    // Total murni yang dikirim kasir ke Firebase, jangan dihitung manual
     const totalAsliDB = Number(trx.totalHarga || trx.total || trx.bayar || 0);
     const finalTotal = totalAsliDB + totalKoreksi;
     
@@ -266,6 +260,88 @@ export default function LaporanPage() {
       setIsProcessing(false);
   };
 
+  // 🔥 FITUR EDIT KE KASIR
+  const handleEditKeKasir = () => {
+    if (!selectedTrx) return;
+
+    // 1. Bungkus daftar barang ke format keranjang Kasir
+    const cartToRestore: any[] = [];
+    if (selectedTrx.items) {
+        Object.values(selectedTrx.items).forEach((item: any) => {
+            const pId = item.produkId || item.id || "0";
+            const qty = item.qty || item.jumlah || 1;
+            const hJual = Number(item.harga_jual || item.harga || 0);
+            
+            // Cari data master gudang agar kasir tahu stok aslinya
+            const master = produkMaster.find(p => p.id === pId || p.nama_produk === item.nama_produk);
+            
+            cartToRestore.push({
+                id: pId,
+                nama: item.nama_produk || item.namaProduk || "Produk",
+                hargaModal: Number(item.modal || item.hargaModal || item.harga_modal || (master ? master.harga_modal : 0)),
+                hargaJual: hJual,
+                qty: qty,
+                stok: master ? (master.total_stok + qty) : 9999, // Tambahkan qty saat ini karena akan di-edit
+                isCustomPrice: item.isCustomPrice === true || item.isCustomPrice === "true" || item.isCustomPriceStr === "1"
+            });
+        });
+    }
+
+    // 2. Buat surat jalan (Payload) untuk halaman Kasir
+    const editPayload = {
+        isEditing: true,
+        trxId: selectedTrx.id,
+        waktuTransaksi: selectedTrx.timestamp || selectedTrx.waktu,
+        items: cartToRestore,
+        kasirName: selectedTrx.kasirName,
+        customerName: selectedTrx.customerName
+    };
+
+    // 3. Simpan di laci browser dan pindah halaman
+    localStorage.setItem("edit_trx_payload", JSON.stringify(editPayload));
+    router.push('/dashboard/kasir');
+  };
+
+  // 🔥 HITUNG PROFIT KHUSUS STRUK INI
+  const hitungProfitStruk = () => {
+    if (!selectedTrx || selectedTrx.isVoid) return 0;
+    let modalStruk = Number(selectedTrx.totalModal || 0);
+
+    if (modalStruk === 0 && selectedTrx.items) {
+        Object.values(selectedTrx.items).forEach((item: any) => {
+            const pId = item.produkId || item.id;
+            const pNama = (item.nama_produk || item.namaProduk || "").toLowerCase();
+            const qty = item.qty || item.jumlah || 1;
+            let m = Number(item.modal || item.hargaModal || item.harga_modal || 0);
+
+            // Akuntansi Anti Bocor
+            if (pId === "ongkir" || pId === "lainnya" || pNama.includes("ongkir") || pNama.includes("box")) {
+                m = Number(item.harga_jual || item.harga || 0); // Uang numpang lewat
+            } else if (pId === "admin" || pNama.includes("admin") || pNama.includes("jasa")) {
+                m = 0; // 100% Profit Toko
+            } else if (m === 0) {
+                m = produkMaster.find(p => p.id === pId || p.nama_produk === item.nama_produk)?.harga_modal || 0;
+            }
+            modalStruk += (qty * m);
+        });
+    }
+
+    // Tambah modal dari koreksi jika ada
+    if (selectedTrx.koreksi && selectedTrx.koreksi.length > 0) {
+        selectedTrx.koreksi.forEach((adj: any) => {
+            if (adj.items) {
+                Object.values(adj.items).forEach((ai: any) => {
+                    const qDelta = Number(ai.qtyDelta || 0);
+                    const m = produkMaster.find(p => p.id === ai.produkId || p.nama_produk === ai.nama_produk)?.harga_modal || 0;
+                    modalStruk += (qDelta * m);
+                });
+            }
+        });
+    }
+
+    return selectedTrx.finalTotal - modalStruk;
+  };
+
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex font-sans selection:bg-emerald-500 selection:text-white">
       <Sidebar />
@@ -282,7 +358,7 @@ export default function LaporanPage() {
             
             <div className="flex flex-wrap gap-2">
               <button onClick={() => setShowProfit(true)} className="px-3 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 font-medium rounded-xl text-sm transition-all border border-slate-700">
-                 Valuasi / Profit
+                 📊 Valuasi / Profit
               </button>
               <button onClick={() => setShowBestSeller(true)} className="px-3 py-2 bg-yellow-500/10 hover:bg-yellow-500/20 text-yellow-400 font-medium rounded-xl text-sm transition-all border border-yellow-500/20">
                  ⭐ Best Seller
@@ -332,7 +408,7 @@ export default function LaporanPage() {
                   processedList.map(trx => {
                       const isPiutang = trx.status === "UTANG" || trx.status === "PIUTANG" || (trx.finalBayar < trx.finalTotal);
                       const date = new Date(trx.timestamp || trx.waktu);
-                      const timeStr = `${date.getDate()}/${date.getMonth()+1}/${date.getFullYear()} • ${date.getHours()}:${String(date.getMinutes()).padStart(2, '0')}`;
+                      const timeStr = `${String(date.getDate()).padStart(2, '0')}/${String(date.getMonth()+1).padStart(2, '0')}/${String(date.getFullYear()).slice(-2)} • ${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
                       let cardColor = trx.isVoid ? "bg-red-950/40 border-red-900/50" : "bg-slate-900 border-slate-800";
                       
                       return (
@@ -348,6 +424,7 @@ export default function LaporanPage() {
                                           </p>
                                           <p className="text-sm font-medium text-slate-400">👤 {trx.kasirName?.split("|||")[0] || "Kasir"}</p>
                                           {isPiutang && !trx.isVoid && <span className="bg-orange-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-full">Piutang</span>}
+                                          {trx.adaEditHarga && !trx.isVoid && <span className="bg-yellow-500 text-slate-900 text-[10px] font-bold px-2 py-0.5 rounded-full" title="Harga diubah manual">✎ Edit Harga</span>}
                                       </div>
                                       <p className="text-xs text-slate-500 font-mono mt-2">
                                           {timeStr} {trx.customerName ? ` • Cust: ${trx.customerName}` : ''}
@@ -365,63 +442,115 @@ export default function LaporanPage() {
         </main>
       </div>
 
-      {/* MODAL DETAIL TRANSAKSI */}
+      {/* ============================================================== */}
+      {/* 🔥 MODAL DETAIL TRANSAKSI YANG TELAH DIPERBAIKI (TAMPILAN ANDROID) */}
+      {/* ============================================================== */}
       {selectedTrx && !showVoid && !showPiutang && (
         <div className="fixed inset-0 bg-slate-950/80 z-50 flex items-center justify-center p-4">
           <div className="bg-slate-900 border border-slate-800 rounded-3xl w-full max-w-lg p-6 shadow-2xl max-h-[90vh] overflow-y-auto">
-            <div className="flex justify-between items-center mb-4">
-                <h3 className="text-xl font-bold text-white">Detail Transaksi</h3>
-                <button onClick={() => setSelectedTrx(null)} className="text-slate-500 hover:text-white">✕</button>
+            
+            {/* Header Modal */}
+            <div className="flex justify-between items-center mb-6 border-b border-slate-800 pb-4">
+                <div>
+                    <h3 className="text-xl font-bold text-white">Detail Transaksi</h3>
+                    <p className="text-xs text-slate-500 font-mono mt-1">ID: {selectedTrx.id}</p>
+                </div>
+                <div className="flex items-center gap-2">
+                    {/* 🔥 TOMBOL EDIT (PENSIL) */}
+                    {!selectedTrx.isVoid && (
+                        <button 
+                            onClick={handleEditKeKasir} 
+                            className="w-10 h-10 rounded-full bg-orange-500/20 text-orange-500 flex items-center justify-center hover:bg-orange-500 hover:text-white transition-all border border-orange-500/50"
+                            title="Edit Transaksi ke Kasir"
+                        >
+                            ✏️
+                        </button>
+                    )}
+                    <button onClick={() => setSelectedTrx(null)} className="w-10 h-10 rounded-full bg-slate-800 text-slate-400 flex items-center justify-center hover:bg-slate-700 hover:text-white">✕</button>
+                </div>
             </div>
             
+            {/* Banner Piutang */}
             {(selectedTrx.status === "UTANG" || selectedTrx.status === "PIUTANG") && !selectedTrx.isVoid && (
-                <div onClick={() => setShowPiutang(true)} className="bg-orange-500/20 border border-orange-500/50 p-4 rounded-xl mb-4 cursor-pointer hover:bg-orange-500/30 transition-all flex justify-between items-center">
+                <div onClick={() => setShowPiutang(true)} className="bg-orange-500/10 border border-orange-500/30 p-4 rounded-xl mb-6 cursor-pointer hover:bg-orange-500/20 transition-all flex justify-between items-center">
                     <div>
-                        <p className="text-sm font-bold text-orange-400">STATUS: BELUM LUNAS (PIUTANG)</p>
-                        <p className="text-xs text-orange-300 mt-1">Masuk: Rp {formatRupiah(selectedTrx.finalBayar)} | Kurang: Rp {formatRupiah(selectedTrx.finalTotal - selectedTrx.finalBayar)}</p>
+                        <p className="text-sm font-bold text-orange-500">⚠️ STATUS: BELUM LUNAS (PIUTANG)</p>
+                        <p className="text-xs text-slate-400 mt-1">Uang Masuk: Rp {formatRupiah(selectedTrx.finalBayar)} | Kurang: Rp {formatRupiah(selectedTrx.finalTotal - selectedTrx.finalBayar)}</p>
                     </div>
-                    <span className="bg-orange-500 text-white text-xs font-bold px-3 py-1.5 rounded-lg shadow-md">BAYAR</span>
+                    <span className="bg-orange-500 text-white text-xs font-bold px-4 py-2 rounded-lg shadow-md">BAYAR</span>
                 </div>
             )}
 
-            <div className="space-y-3 mb-6">
+            {/* 🔥 DAFTAR BARANG (Sesuai Format Android) */}
+            <div className="space-y-4 mb-6">
                 {selectedTrx.items && Object.values(selectedTrx.items).map((item: any, idx: number) => {
                     const isCustom = item.isCustomPrice === true || item.isCustomPrice === "true" || item.isCustomPriceStr === "1";
                     const color = isCustom ? "text-yellow-500" : "text-white";
+                    const hJual = Number(item.harga_jual || item.harga || 0);
+                    const qty = Number(item.qty || item.jumlah || 1);
+                    const subtotal = qty * hJual;
+
                     return (
-                        <div key={idx} className="flex justify-between items-center text-sm border-b border-slate-800 pb-2">
-                            <div>
-                                <p className={`font-bold ${color}`}>{item.nama_produk || item.namaProduk}</p>
-                                <p className={`text-xs ${color}`}>{item.qty || item.jumlah || 1} x Rp {formatRupiah(item.harga_jual || item.harga)}</p>
+                        <div key={idx} className="flex justify-between items-end border-b border-slate-800/50 pb-3">
+                            <div className="flex-1 pr-4">
+                                <p className={`font-bold text-sm ${color}`}>{item.nama_produk || item.namaProduk}</p>
+                                <p className={`text-xs mt-1 ${isCustom ? 'text-yellow-600' : 'text-slate-400'}`}>
+                                    {qty} x Rp {formatRupiah(hJual)}
+                                </p>
                             </div>
-                            <p className={`font-bold ${color}`}>Rp {formatRupiah((item.qty || item.jumlah || 1) * (item.harga_jual || item.harga))}</p>
+                            <p className={`font-bold text-sm ${color}`}>Rp {formatRupiah(subtotal)}</p>
                         </div>
                     );
                 })}
             </div>
 
+            {/* Riwayat Koreksi */}
             {selectedTrx.koreksi && selectedTrx.koreksi.length > 0 && (
-                <div className="bg-emerald-950/30 border border-emerald-900/50 rounded-xl p-4 mb-6">
-                    <p className="text-xs font-bold text-emerald-400 mb-2">Riwayat Koreksi / Retur:</p>
+                <div className="bg-emerald-950/20 border border-emerald-900/30 rounded-xl p-4 mb-6">
+                    <p className="text-xs font-bold text-emerald-500 mb-3">Riwayat Koreksi / Retur:</p>
                     {selectedTrx.koreksi.map((adj: any, idx: number) => (
-                        <div key={idx} className="text-xs text-slate-300 mb-2 border-b border-emerald-900/30 pb-2 last:border-0">
-                            <p className="text-[10px] text-slate-500">{new Date(adj.createdAt || adj.timestamp).toLocaleString()}</p>
-                            {adj.items && Object.values(adj.items).map((ai: any, i2: number) => (
-                                <p key={i2} className="text-emerald-300">• {ai.nama_produk || ai.namaProduk} (Qty: {ai.qtyDelta}, Harga Baru: Rp {ai.hargaBaru})</p>
-                            ))}
+                        <div key={idx} className="text-xs text-slate-300 mb-3 border-b border-emerald-900/20 pb-3 last:border-0 last:mb-0 last:pb-0">
+                            <p className="text-[10px] text-slate-500 mb-1">Waktu: {new Date(adj.createdAt || adj.timestamp).toLocaleString()}</p>
+                            {adj.items && Object.values(adj.items).map((ai: any, i2: number) => {
+                                const qDelta = Number(ai.qtyDelta || 0);
+                                const hBaru = Number(ai.hargaBaru || 0);
+                                const sign = qDelta > 0 ? `(+${qDelta})` : qDelta < 0 ? `(${qDelta})` : `(Edit Harga)`;
+                                const cColor = qDelta > 0 ? 'text-emerald-400' : qDelta < 0 ? 'text-red-400' : 'text-yellow-500';
+
+                                return (
+                                    <div key={i2} className="flex justify-between items-center mt-1">
+                                        <p className={`font-bold ${cColor}`}>• {ai.nama_produk || ai.namaProduk} {sign}</p>
+                                        <p className="text-slate-400">@ Rp {formatRupiah(hBaru)}</p>
+                                    </div>
+                                );
+                            })}
                         </div>
                     ))}
                 </div>
             )}
 
-            <div className="flex justify-between items-center mt-6">
-                <p className="text-lg font-bold text-slate-300">TOTAL</p>
-                <p className="text-2xl font-black text-emerald-400">Rp {formatRupiah(selectedTrx.finalTotal)}</p>
+            {/* Ringkasan Keuangan */}
+            <div className="bg-slate-800/50 rounded-xl p-4 mb-6 border border-slate-700/50">
+                <div className="flex justify-between items-center mb-2">
+                    <p className="text-sm font-bold text-slate-300">TOTAL</p>
+                    <p className={`text-xl font-black ${selectedTrx.isVoid ? 'text-slate-500 line-through' : 'text-emerald-400'}`}>
+                        Rp {formatRupiah(selectedTrx.finalTotal)}
+                    </p>
+                </div>
+                
+                {/* 🔥 PROFIT PER STRUK */}
+                <div className="flex justify-between items-center pt-2 border-t border-slate-700">
+                    <p className="text-xs font-medium text-slate-400">PROFIT</p>
+                    <p className={`text-sm font-bold ${selectedTrx.isVoid ? 'text-slate-500' : (hitungProfitStruk() >= 0 ? 'text-emerald-500' : 'text-red-500')}`}>
+                        {selectedTrx.isVoid ? "Rp 0 (BATAL)" : `Rp ${formatRupiah(hitungProfitStruk())}`}
+                    </p>
+                </div>
             </div>
 
+            {/* Tombol Void */}
             {!selectedTrx.isVoid && (
-                <div className="mt-8 flex gap-3">
-                    <button onClick={() => setShowVoid(true)} className="flex-1 py-3 rounded-xl font-bold bg-red-500/10 text-red-500 border border-red-500/20 hover:bg-red-500 hover:text-white transition-all">
+                <div className="flex gap-3 mt-4">
+                    <button onClick={() => setShowVoid(true)} className="flex-1 py-3 rounded-xl font-bold bg-slate-800 text-red-400 hover:bg-red-500/20 transition-all border border-transparent hover:border-red-500/30">
                         BATALKAN (VOID)
                     </button>
                 </div>
