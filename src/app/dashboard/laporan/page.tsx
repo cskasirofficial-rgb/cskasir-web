@@ -20,14 +20,12 @@ export default function LaporanPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [loadingData, setLoadingData] = useState(true);
 
-  // Modals
   const [selectedTrx, setSelectedTrx] = useState<any>(null);
   const [showProfit, setShowProfit] = useState(false);
   const [showBestSeller, setShowBestSeller] = useState(false);
   const [showVoid, setShowVoid] = useState(false);
   const [showPiutang, setShowPiutang] = useState(false);
 
-  // Forms
   const [voidReason, setVoidReason] = useState("");
   const [cicilan, setCicilan] = useState("");
   const [isProcessing, setIsProcessing] = useState(false);
@@ -108,7 +106,17 @@ export default function LaporanPage() {
     const koreksi = adjustmentList.filter(a => a.trxId === trx.id);
     const totalKoreksi = koreksi.reduce((sum, a) => sum + (Number(a.deltaTotal) || 0), 0);
     
-    const totalAsliDB = Number(trx.totalHarga || trx.total || trx.bayar || 0);
+    // 🔥 PERBAIKAN: Hitung ulang Subtotal Item untuk memastikan tidak ada Rp 0
+    let manualSubtotalItems = 0;
+    if (trx.items) {
+        Object.values(trx.items).forEach((item: any) => {
+            const h = Number(item.harga_jual || item.hargaJual || item.harga || 0);
+            const q = Number(item.qty || item.jumlah || item.jml || 1);
+            manualSubtotalItems += (h * q);
+        });
+    }
+
+    const totalAsliDB = Number(trx.totalHarga || trx.total || trx.bayar || manualSubtotalItems);
     const finalTotal = totalAsliDB + totalKoreksi;
     
     const isVoid = trx.isVoid === true || trx.isVoid === "true";
@@ -156,7 +164,7 @@ export default function LaporanPage() {
           if (trx.items) {
               Object.values(trx.items).forEach((item: any) => {
                   const nama = item.nama_produk || item.namaProduk || "Produk";
-                  const qty = item.qty || item.jumlah || 1;
+                  const qty = Number(item.qty || item.jumlah || 1);
                   mapTerlaris[nama] = (mapTerlaris[nama] || 0) + qty;
               });
           }
@@ -176,8 +184,8 @@ export default function LaporanPage() {
 
           if (trx.items) {
               Object.values(trx.items).forEach((item: any) => {
-                  const rawHarga = trx.isVoid ? 0 : (item.harga_jual || item.harga || 0);
-                  const qty = item.qty || item.jumlah || 1;
+                  const rawHarga = trx.isVoid ? 0 : Number(item.harga_jual || item.hargaJual || item.harga || 0);
+                  const qty = Number(item.qty || item.jumlah || 1);
                   const rawSub = rawHarga * qty;
                   csv += `;;;;; - ${item.nama_produk || item.namaProduk || ''};${rawHarga};${qty};${rawSub}\n`;
               });
@@ -216,7 +224,7 @@ export default function LaporanPage() {
                       const pSnap = await get(ref(database, `stok/${profile?.groupId}/${pId}`));
                       if (pSnap.exists()) {
                           const currentStock = pSnap.val().total_stok || 0;
-                          updates[`stok/${profile?.groupId}/${pId}/total_stok`] = currentStock + (item.qty || item.jumlah || 1);
+                          updates[`stok/${profile?.groupId}/${pId}/total_stok`] = currentStock + Number(item.qty || item.jumlah || 1);
                       }
                   }
               }
@@ -260,20 +268,17 @@ export default function LaporanPage() {
       setIsProcessing(false);
   };
 
-  // 🔥 FITUR EDIT KE KASIR
   const handleEditKeKasir = () => {
     if (!selectedTrx) return;
 
-    // 1. Bungkus daftar barang ke format keranjang Kasir
     const cartToRestore: any[] = [];
     if (selectedTrx.items) {
         Object.values(selectedTrx.items).forEach((item: any) => {
             const pId = item.produkId || item.id || "0";
-            const qty = item.qty || item.jumlah || 1;
-            const hJual = Number(item.harga_jual || item.harga || 0);
+            const qty = Number(item.qty || item.jumlah || item.jml || 1);
+            const hJual = Number(item.harga_jual || item.hargaJual || item.harga || 0);
             
-            // Cari data master gudang agar kasir tahu stok aslinya
-            const master = produkMaster.find(p => p.id === pId || p.nama_produk === item.nama_produk);
+            const master = produkMaster.find(p => p.id === pId || p.nama_produk === (item.nama_produk || item.namaProduk));
             
             cartToRestore.push({
                 id: pId,
@@ -281,13 +286,12 @@ export default function LaporanPage() {
                 hargaModal: Number(item.modal || item.hargaModal || item.harga_modal || (master ? master.harga_modal : 0)),
                 hargaJual: hJual,
                 qty: qty,
-                stok: master ? (master.total_stok + qty) : 9999, // Tambahkan qty saat ini karena akan di-edit
+                stok: master ? (master.total_stok + qty) : 9999, 
                 isCustomPrice: item.isCustomPrice === true || item.isCustomPrice === "true" || item.isCustomPriceStr === "1"
             });
         });
     }
 
-    // 2. Buat surat jalan (Payload) untuk halaman Kasir
     const editPayload = {
         isEditing: true,
         trxId: selectedTrx.id,
@@ -297,12 +301,10 @@ export default function LaporanPage() {
         customerName: selectedTrx.customerName
     };
 
-    // 3. Simpan di laci browser dan pindah halaman
     localStorage.setItem("edit_trx_payload", JSON.stringify(editPayload));
     router.push('/dashboard/kasir');
   };
 
-  // 🔥 HITUNG PROFIT KHUSUS STRUK INI
   const hitungProfitStruk = () => {
     if (!selectedTrx || selectedTrx.isVoid) return 0;
     let modalStruk = Number(selectedTrx.totalModal || 0);
@@ -311,22 +313,20 @@ export default function LaporanPage() {
         Object.values(selectedTrx.items).forEach((item: any) => {
             const pId = item.produkId || item.id;
             const pNama = (item.nama_produk || item.namaProduk || "").toLowerCase();
-            const qty = item.qty || item.jumlah || 1;
+            const qty = Number(item.qty || item.jumlah || 1);
             let m = Number(item.modal || item.hargaModal || item.harga_modal || 0);
 
-            // Akuntansi Anti Bocor
             if (pId === "ongkir" || pId === "lainnya" || pNama.includes("ongkir") || pNama.includes("box")) {
-                m = Number(item.harga_jual || item.harga || 0); // Uang numpang lewat
+                m = Number(item.harga_jual || item.hargaJual || item.harga || 0); 
             } else if (pId === "admin" || pNama.includes("admin") || pNama.includes("jasa")) {
-                m = 0; // 100% Profit Toko
+                m = 0; 
             } else if (m === 0) {
-                m = produkMaster.find(p => p.id === pId || p.nama_produk === item.nama_produk)?.harga_modal || 0;
+                m = produkMaster.find(p => p.id === pId || p.nama_produk === (item.nama_produk || item.namaProduk))?.harga_modal || 0;
             }
             modalStruk += (qty * m);
         });
     }
 
-    // Tambah modal dari koreksi jika ada
     if (selectedTrx.koreksi && selectedTrx.koreksi.length > 0) {
         selectedTrx.koreksi.forEach((adj: any) => {
             if (adj.items) {
@@ -407,6 +407,7 @@ export default function LaporanPage() {
               ) : (
                   processedList.map(trx => {
                       const isPiutang = trx.status === "UTANG" || trx.status === "PIUTANG" || (trx.finalBayar < trx.finalTotal);
+                      const isMinus = trx.isStockConflict === true || trx.isStockConflict === "true";
                       const date = new Date(trx.timestamp || trx.waktu);
                       const timeStr = `${String(date.getDate()).padStart(2, '0')}/${String(date.getMonth()+1).padStart(2, '0')}/${String(date.getFullYear()).slice(-2)} • ${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
                       let cardColor = trx.isVoid ? "bg-red-950/40 border-red-900/50" : "bg-slate-900 border-slate-800";
@@ -442,27 +443,19 @@ export default function LaporanPage() {
         </main>
       </div>
 
-      {/* ============================================================== */}
-      {/* 🔥 MODAL DETAIL TRANSAKSI YANG TELAH DIPERBAIKI (TAMPILAN ANDROID) */}
-      {/* ============================================================== */}
+      {/* MODAL DETAIL TRANSAKSI */}
       {selectedTrx && !showVoid && !showPiutang && (
         <div className="fixed inset-0 bg-slate-950/80 z-50 flex items-center justify-center p-4">
           <div className="bg-slate-900 border border-slate-800 rounded-3xl w-full max-w-lg p-6 shadow-2xl max-h-[90vh] overflow-y-auto">
             
-            {/* Header Modal */}
             <div className="flex justify-between items-center mb-6 border-b border-slate-800 pb-4">
                 <div>
                     <h3 className="text-xl font-bold text-white">Detail Transaksi</h3>
                     <p className="text-xs text-slate-500 font-mono mt-1">ID: {selectedTrx.id}</p>
                 </div>
                 <div className="flex items-center gap-2">
-                    {/* 🔥 TOMBOL EDIT (PENSIL) */}
                     {!selectedTrx.isVoid && (
-                        <button 
-                            onClick={handleEditKeKasir} 
-                            className="w-10 h-10 rounded-full bg-orange-500/20 text-orange-500 flex items-center justify-center hover:bg-orange-500 hover:text-white transition-all border border-orange-500/50"
-                            title="Edit Transaksi ke Kasir"
-                        >
+                        <button onClick={handleEditKeKasir} className="w-10 h-10 rounded-full bg-orange-500/20 text-orange-500 flex items-center justify-center hover:bg-orange-500 hover:text-white transition-all border border-orange-500/50" title="Edit Transaksi ke Kasir">
                             ✏️
                         </button>
                     )}
@@ -470,7 +463,6 @@ export default function LaporanPage() {
                 </div>
             </div>
             
-            {/* Banner Piutang */}
             {(selectedTrx.status === "UTANG" || selectedTrx.status === "PIUTANG") && !selectedTrx.isVoid && (
                 <div onClick={() => setShowPiutang(true)} className="bg-orange-500/10 border border-orange-500/30 p-4 rounded-xl mb-6 cursor-pointer hover:bg-orange-500/20 transition-all flex justify-between items-center">
                     <div>
@@ -481,13 +473,15 @@ export default function LaporanPage() {
                 </div>
             )}
 
-            {/* 🔥 DAFTAR BARANG (Sesuai Format Android) */}
+            {/* DAFTAR BARANG (Perbaikan Variabel Harga) */}
             <div className="space-y-4 mb-6">
                 {selectedTrx.items && Object.values(selectedTrx.items).map((item: any, idx: number) => {
                     const isCustom = item.isCustomPrice === true || item.isCustomPrice === "true" || item.isCustomPriceStr === "1";
                     const color = isCustom ? "text-yellow-500" : "text-white";
-                    const hJual = Number(item.harga_jual || item.harga || 0);
-                    const qty = Number(item.qty || item.jumlah || 1);
+                    
+                    // 🔥 KAMUS DIALEK HARGA DIPERBAIKI
+                    const hJual = Number(item.harga_jual || item.hargaJual || item.harga || 0);
+                    const qty = Number(item.qty || item.jumlah || item.jml || 1);
                     const subtotal = qty * hJual;
 
                     return (
@@ -504,7 +498,6 @@ export default function LaporanPage() {
                 })}
             </div>
 
-            {/* Riwayat Koreksi */}
             {selectedTrx.koreksi && selectedTrx.koreksi.length > 0 && (
                 <div className="bg-emerald-950/20 border border-emerald-900/30 rounded-xl p-4 mb-6">
                     <p className="text-xs font-bold text-emerald-500 mb-3">Riwayat Koreksi / Retur:</p>
@@ -529,7 +522,6 @@ export default function LaporanPage() {
                 </div>
             )}
 
-            {/* Ringkasan Keuangan */}
             <div className="bg-slate-800/50 rounded-xl p-4 mb-6 border border-slate-700/50">
                 <div className="flex justify-between items-center mb-2">
                     <p className="text-sm font-bold text-slate-300">TOTAL</p>
@@ -538,7 +530,6 @@ export default function LaporanPage() {
                     </p>
                 </div>
                 
-                {/* 🔥 PROFIT PER STRUK */}
                 <div className="flex justify-between items-center pt-2 border-t border-slate-700">
                     <p className="text-xs font-medium text-slate-400">PROFIT</p>
                     <p className={`text-sm font-bold ${selectedTrx.isVoid ? 'text-slate-500' : (hitungProfitStruk() >= 0 ? 'text-emerald-500' : 'text-red-500')}`}>
@@ -547,7 +538,6 @@ export default function LaporanPage() {
                 </div>
             </div>
 
-            {/* Tombol Void */}
             {!selectedTrx.isVoid && (
                 <div className="flex gap-3 mt-4">
                     <button onClick={() => setShowVoid(true)} className="flex-1 py-3 rounded-xl font-bold bg-slate-800 text-red-400 hover:bg-red-500/20 transition-all border border-transparent hover:border-red-500/30">
