@@ -1,7 +1,7 @@
 // @ts-nocheck
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/context/AuthContext";
 import Sidebar from "@/components/Sidebar";
@@ -49,6 +49,9 @@ export default function KasirPage() {
 
   const [showSuccess, setShowSuccess] = useState<any>(null);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [copySuccess, setCopySuccess] = useState(false);
+
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
   useEffect(() => { 
     if (!loading && !user) router.push("/login"); 
@@ -287,7 +290,7 @@ export default function KasirPage() {
         if (Object.keys(updates).length > 0) await update(ref(database), updates);
 
         setShowPay(false);
-        setShowSuccess({
+        const dataSukses = {
           trxId,
           timestamp: time,
           items: [...cart],
@@ -301,7 +304,9 @@ export default function KasirPage() {
           namaBiayaLainnya: namaBiayaLain,
           kasirName: namaKasir,
           customerName: cusName
-        });
+        };
+        setShowSuccess(dataSukses);
+        renderReceiptToCanvas(dataSukses);
       } else {
         const payload = {
           isEdited: true,
@@ -349,105 +354,152 @@ export default function KasirPage() {
     setIsProcessing(false);
   };
 
-  // 🔥 CETAK STRUK THERMAL 58MM LANGSUNG KE DEFAULT PRINTER
-  const handlePrintStruk = () => {
-    if (!showSuccess) return;
-    const printWindow = window.open('', '_blank', 'width=350,height=600');
-    if (!printWindow) return alert("Izinkan pop-up browser untuk mencetak struk!");
+  // 🔥 RENDER GAMBAR STRUK KE CANVAS (ANTI-EDIT NOTA)
+  const renderReceiptToCanvas = (data: any) => {
+    setTimeout(() => {
+      const canvas = canvasRef.current;
+      if (!canvas) return;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return;
 
-    const date = new Date(showSuccess.timestamp || Date.now());
-    const tglStr = `${date.getDate()}/${date.getMonth()+1}/${date.getFullYear()} ${date.getHours()}:${String(date.getMinutes()).padStart(2, '0')}`;
+      const width = 380;
+      let height = 340 + (data.items.length * 36);
+      if (data.biayaOngkir > 0) height += 24;
+      if (data.biayaAdmin > 0) height += 24;
+      if (data.biayaLainnya > 0) height += 24;
 
-    let itemsHtml = showSuccess.items.map(item => `
-      <div style="display:flex; justify-content:space-between; margin-bottom:2px;">
-        <span style="font-weight:bold;">${item.nama}</span>
-        <span>Rp ${formatRupiah(item.qty * item.hargaJual)}</span>
-      </div>
-      <div style="font-size:11px; color:#555; margin-bottom:4px;">
-        ${item.qty} x Rp ${formatRupiah(item.hargaJual)}
-      </div>
-    `).join('');
+      canvas.width = width;
+      canvas.height = height;
 
-    if (showSuccess.biayaOngkir > 0) itemsHtml += `<div style="display:flex; justify-content:space-between; font-size:12px;"><span>Biaya Ongkir</span><span>Rp ${formatRupiah(showSuccess.biayaOngkir)}</span></div>`;
-    if (showSuccess.biayaAdmin > 0) itemsHtml += `<div style="display:flex; justify-content:space-between; font-size:12px;"><span>Biaya Admin</span><span>Rp ${formatRupiah(showSuccess.biayaAdmin)}</span></div>`;
-    if (showSuccess.biayaLainnya > 0) itemsHtml += `<div style="display:flex; justify-content:space-between; font-size:12px;"><span>${showSuccess.namaBiayaLainnya || "Biaya Lain"}</span><span>Rp ${formatRupiah(showSuccess.biayaLainnya)}</span></div>`;
+      // Background Nota
+      ctx.fillStyle = "#ffffff";
+      ctx.fillRect(0, 0, width, height);
 
-    const htmlContent = `
-      <html>
-        <head>
-          <title>Struk_${showSuccess.trxId}</title>
-          <style>
-            @page { margin: 0; size: auto; }
-            body { font-family: monospace, Courier, sans-serif; width: 58mm; padding: 6px; margin: 0 auto; color: #000; font-size: 12px; }
-            .center { text-align: center; }
-            .line { border-top: 1px dashed #000; margin: 6px 0; }
-            .bold { font-weight: bold; }
-          </style>
-        </head>
-        <body>
-          <div class="center bold" style="font-size:14px;">${identitasToko.namaToko}</div>
-          ${identitasToko.slogan ? `<div class="center" style="font-size:10px;">${identitasToko.slogan}</div>` : ''}
-          ${identitasToko.alamatToko ? `<div class="center" style="font-size:10px;">${identitasToko.alamatToko}</div>` : ''}
-          ${identitasToko.noTelp ? `<div class="center" style="font-size:10px;">Telp: ${identitasToko.noTelp}</div>` : ''}
-          <div class="line"></div>
-          <div>No. Trx : #${showSuccess.trxId.slice(-6)}</div>
-          <div>Tgl     : ${tglStr}</div>
-          <div>Kasir   : ${showSuccess.kasirName}</div>
-          ${showSuccess.customerName ? `<div>Pelanggan: ${showSuccess.customerName}</div>` : ''}
-          <div class="line"></div>
-          ${itemsHtml}
-          <div class="line"></div>
-          <div style="display:flex; justify-content:space-between;" class="bold"><span>TOTAL</span><span>Rp ${formatRupiah(showSuccess.totalAkhir)}</span></div>
-          <div style="display:flex; justify-content:space-between; font-size:11px; margin-top:2px;"><span>Bayar (${showSuccess.metodeBayar.toUpperCase()})</span><span>Rp ${formatRupiah(showSuccess.bayar)}</span></div>
-          <div style="display:flex; justify-content:space-between; font-size:11px;"><span>Kembali</span><span>Rp ${formatRupiah(showSuccess.kembali)}</span></div>
-          <div class="line"></div>
-          <div class="center" style="font-size:11px;">${identitasToko.footerStruk}</div>
-          <script>
-            window.onload = function() { window.print(); window.close(); }
-          </script>
-        </body>
-      </html>
-    `;
+      // Header Toko
+      ctx.fillStyle = "#000000";
+      ctx.textAlign = "center";
+      ctx.font = "bold 16px monospace";
+      ctx.fillText(identitasToko.namaToko, width / 2, 28);
 
-    printWindow.document.open();
-    printWindow.document.write(htmlContent);
-    printWindow.document.close();
+      ctx.font = "11px monospace";
+      let y = 46;
+      if (identitasToko.slogan) { ctx.fillText(identitasToko.slogan, width / 2, y); y += 16; }
+      if (identitasToko.alamatToko) { ctx.fillText(identitasToko.alamatToko, width / 2, y); y += 16; }
+      if (identitasToko.noTelp) { ctx.fillText(`Telp: ${identitasToko.noTelp}`, width / 2, y); y += 16; }
+
+      // Garis Pemisah
+      ctx.setLineDash([4, 4]);
+      ctx.beginPath();
+      ctx.moveTo(15, y);
+      ctx.lineTo(width - 15, y);
+      ctx.stroke();
+      y += 18;
+
+      // Info Transaksi
+      ctx.textAlign = "left";
+      ctx.font = "11px monospace";
+      const date = new Date(data.timestamp || Date.now());
+      const tglStr = `${date.getDate()}/${date.getMonth()+1}/${date.getFullYear()} ${date.getHours()}:${String(date.getMinutes()).padStart(2, '0')}`;
+      
+      ctx.fillText(`No. Trx : #${data.trxId.slice(-6)}`, 15, y); y += 16;
+      ctx.fillText(`Waktu   : ${tglStr}`, 15, y); y += 16;
+      ctx.fillText(`Kasir   : ${data.kasirName}`, 15, y); y += 16;
+      if (data.customerName) { ctx.fillText(`Pelanggan: ${data.customerName}`, 15, y); y += 16; }
+
+      ctx.beginPath();
+      ctx.moveTo(15, y);
+      ctx.lineTo(width - 15, y);
+      ctx.stroke();
+      y += 18;
+
+      // Items
+      data.items.forEach((it: any) => {
+        ctx.font = "bold 12px monospace";
+        ctx.textAlign = "left";
+        ctx.fillText(it.nama, 15, y);
+        
+        ctx.font = "11px monospace";
+        ctx.textAlign = "left";
+        ctx.fillText(`${it.qty} x Rp ${formatRupiah(it.hargaJual)}`, 15, y + 15);
+
+        ctx.textAlign = "right";
+        ctx.fillText(`Rp ${formatRupiah(it.qty * it.hargaJual)}`, width - 15, y + 15);
+        y += 34;
+      });
+
+      // Biaya Tambahan
+      if (data.biayaOngkir > 0) {
+        ctx.textAlign = "left"; ctx.fillText("Biaya Ongkir", 15, y);
+        ctx.textAlign = "right"; ctx.fillText(`Rp ${formatRupiah(data.biayaOngkir)}`, width - 15, y);
+        y += 20;
+      }
+      if (data.biayaAdmin > 0) {
+        ctx.textAlign = "left"; ctx.fillText("Biaya Admin", 15, y);
+        ctx.textAlign = "right"; ctx.fillText(`Rp ${formatRupiah(data.biayaAdmin)}`, width - 15, y);
+        y += 20;
+      }
+      if (data.biayaLainnya > 0) {
+        ctx.textAlign = "left"; ctx.fillText(data.namaBiayaLainnya || "Biaya Lain", 15, y);
+        ctx.textAlign = "right"; ctx.fillText(`Rp ${formatRupiah(data.biayaLainnya)}`, width - 15, y);
+        y += 20;
+      }
+
+      ctx.beginPath();
+      ctx.moveTo(15, y);
+      ctx.lineTo(width - 15, y);
+      ctx.stroke();
+      y += 18;
+
+      // Total & Bayar
+      ctx.font = "bold 13px monospace";
+      ctx.textAlign = "left"; ctx.fillText("TOTAL", 15, y);
+      ctx.textAlign = "right"; ctx.fillText(`Rp ${formatRupiah(data.totalAkhir)}`, width - 15, y);
+      y += 20;
+
+      ctx.font = "11px monospace";
+      ctx.textAlign = "left"; ctx.fillText(`Bayar (${data.metodeBayar.toUpperCase()})`, 15, y);
+      ctx.textAlign = "right"; ctx.fillText(`Rp ${formatRupiah(data.bayar)}`, width - 15, y);
+      y += 16;
+
+      ctx.textAlign = "left"; ctx.fillText("Kembali", 15, y);
+      ctx.textAlign = "right"; ctx.fillText(`Rp ${formatRupiah(data.kembali)}`, width - 15, y);
+      y += 22;
+
+      // Footer
+      ctx.beginPath();
+      ctx.moveTo(15, y);
+      ctx.lineTo(width - 15, y);
+      ctx.stroke();
+      y += 18;
+
+      ctx.textAlign = "center";
+      ctx.font = "11px monospace";
+      ctx.fillText(identitasToko.footerStruk, width / 2, y);
+    }, 100);
   };
 
-  // 🔥 KIRIM WHATSAPP WEB DIRECT
-  const handleKirimWA = () => {
-    if (!showSuccess) return;
-    const date = new Date(showSuccess.timestamp || Date.now());
-    const tglStr = `${date.getDate()}/${date.getMonth()+1}/${date.getFullYear()} ${date.getHours()}:${String(date.getMinutes()).padStart(2, '0')}`;
+  // 🔥 SALIN GAMBAR STRUK (TINGGAL PASTE / CTRL+V DI WA)
+  const handleCopyReceiptImage = async () => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    try {
+      canvas.toBlob(async (blob) => {
+        if (!blob) return;
+        const item = new ClipboardItem({ "image/png": blob });
+        await navigator.clipboard.write([item]);
+        setCopySuccess(true);
+        setTimeout(() => setCopySuccess(false), 3000);
+        // Buka tab WhatsApp
+        window.open("https://web.whatsapp.com", "_blank");
+      });
+    } catch (err) {
+      alert("Gagal menyalin gambar. Silakan unduh gambar struk!");
+    }
+  };
 
-    let text = `*STRUK PEMBELIAN - ${identitasToko.namaToko.toUpperCase()}*\n`;
-    if (identitasToko.alamatToko) text += `${identitasToko.alamatToko}\n`;
-    if (identitasToko.noTelp) text += `Telp: ${identitasToko.noTelp}\n`;
-    text += `--------------------------------\n`;
-    text += `No. Trx : #${showSuccess.trxId.slice(-6)}\n`;
-    text += `Waktu   : ${tglStr}\n`;
-    text += `Kasir   : ${showSuccess.kasirName}\n`;
-    if (showSuccess.customerName) text += `Customer: ${showSuccess.customerName}\n`;
-    text += `--------------------------------\n`;
-
-    showSuccess.items.forEach((item: any) => {
-      text += `• *${item.nama}*\n  ${item.qty} x Rp ${formatRupiah(item.hargaJual)} = Rp ${formatRupiah(item.qty * item.hargaJual)}\n`;
-    });
-
-    if (showSuccess.biayaOngkir > 0) text += `• Ongkir : Rp ${formatRupiah(showSuccess.biayaOngkir)}\n`;
-    if (showSuccess.biayaAdmin > 0) text += `• Admin  : Rp ${formatRupiah(showSuccess.biayaAdmin)}\n`;
-    if (showSuccess.biayaLainnya > 0) text += `• ${showSuccess.namaBiayaLainnya || "Biaya Lain"} : Rp ${formatRupiah(showSuccess.biayaLainnya)}\n`;
-
-    text += `--------------------------------\n`;
-    text += `*TOTAL   : Rp ${formatRupiah(showSuccess.totalAkhir)}*\n`;
-    text += `Bayar (${showSuccess.metodeBayar.toUpperCase()}) : Rp ${formatRupiah(showSuccess.bayar)}\n`;
-    text += `Kembali : Rp ${formatRupiah(showSuccess.kembali)}\n`;
-    text += `--------------------------------\n`;
-    text += `${identitasToko.footerStruk}\n`;
-
-    const encoded = encodeURIComponent(text);
-    const targetUrl = `https://web.whatsapp.com/send?text=${encoded}`;
-    window.open(targetUrl, '_blank');
+  // 🔥 CETAK STRUK NATIVE BROWSER (ANTI MENTAL / DIRECT PRINT)
+  const handlePrintStruk = () => {
+    window.print();
   };
 
   const resetKasir = () => {
@@ -465,14 +517,64 @@ export default function KasirPage() {
 
   return (
     <div className="h-screen w-screen bg-slate-950 text-slate-100 flex font-sans selection:bg-emerald-500 selection:text-white overflow-hidden">
+      {/* CSS KHUSUS PRINT 58MM */}
+      <style jsx global>{`
+        @media print {
+          body * { visibility: hidden; }
+          #printable-thermal-receipt, #printable-thermal-receipt * { visibility: visible; }
+          #printable-thermal-receipt {
+            position: absolute;
+            left: 0;
+            top: 0;
+            width: 58mm;
+            padding: 4px;
+            font-family: monospace;
+            color: #000;
+            background: #fff;
+          }
+        }
+      `}</style>
+
+      {/* STRUK THERMAL UNTUK CETAK OTOMATIS */}
+      {showSuccess && (
+        <div id="printable-thermal-receipt" className="hidden print:block text-black bg-white font-mono text-xs">
+          <div className="text-center font-bold text-sm">{identitasToko.namaToko}</div>
+          {identitasToko.slogan && <div className="text-center text-[10px]">{identitasToko.slogan}</div>}
+          {identitasToko.alamatToko && <div className="text-center text-[10px]">{identitasToko.alamatToko}</div>}
+          {identitasToko.noTelp && <div className="text-center text-[10px]">Telp: {identitasToko.noTelp}</div>}
+          <div className="border-t border-dashed border-black my-1"></div>
+          <div>Trx : #{showSuccess.trxId.slice(-6)}</div>
+          <div>Ksr : {showSuccess.kasirName}</div>
+          {showSuccess.customerName && <div>Plg : {showSuccess.customerName}</div>}
+          <div className="border-t border-dashed border-black my-1"></div>
+          {showSuccess.items.map((it: any, idx: number) => (
+            <div key={idx} className="mb-1">
+              <div className="font-bold">{it.nama}</div>
+              <div className="flex justify-between text-[11px]">
+                <span>{it.qty} x {formatRupiah(it.hargaJual)}</span>
+                <span>Rp {formatRupiah(it.qty * it.hargaJual)}</span>
+              </div>
+            </div>
+          ))}
+          {showSuccess.biayaOngkir > 0 && <div className="flex justify-between"><span>Ongkir</span><span>Rp {formatRupiah(showSuccess.biayaOngkir)}</span></div>}
+          {showSuccess.biayaAdmin > 0 && <div className="flex justify-between"><span>Admin</span><span>Rp {formatRupiah(showSuccess.biayaAdmin)}</span></div>}
+          {showSuccess.biayaLainnya > 0 && <div className="flex justify-between"><span>{showSuccess.namaBiayaLainnya || "Lain"}</span><span>Rp {formatRupiah(showSuccess.biayaLainnya)}</span></div>}
+          <div className="border-t border-dashed border-black my-1"></div>
+          <div className="flex justify-between font-bold text-sm"><span>TOTAL</span><span>Rp {formatRupiah(showSuccess.totalAkhir)}</span></div>
+          <div className="flex justify-between text-[11px]"><span>Bayar ({showSuccess.metodeBayar.toUpperCase()})</span><span>Rp {formatRupiah(showSuccess.bayar)}</span></div>
+          <div className="flex justify-between text-[11px]"><span>Kembali</span><span>Rp {formatRupiah(showSuccess.kembali)}</span></div>
+          <div className="border-t border-dashed border-black my-1"></div>
+          <div className="text-center text-[10px] mt-2">{identitasToko.footerStruk}</div>
+        </div>
+      )}
+
       <Sidebar />
       
       <div className="flex-1 flex flex-col min-w-0 h-full overflow-hidden">
         <Navbar />
         
         <main className="flex-1 flex flex-col md:flex-row min-h-0 overflow-hidden">
-            
-          {/* AREA KIRI: KATALOG BARANG */}
+          {/* KATALOG BARANG */}
           <div className="flex-1 p-4 md:p-6 flex flex-col min-h-0 overflow-hidden border-r border-slate-800">
             {editMode && (
               <div className="bg-orange-500/20 border border-orange-500/50 p-3.5 rounded-xl mb-3 flex justify-between items-center shrink-0">
@@ -521,7 +623,7 @@ export default function KasirPage() {
             </div>
           </div>
 
-          {/* AREA KANAN: KERANJANG BELANJA */}
+          {/* KERANJANG BELANJA */}
           <div className="w-full md:w-96 bg-slate-900/90 flex flex-col h-full min-h-0 border-l border-slate-800 shrink-0">
             <div className="p-3.5 bg-slate-900 border-b border-slate-800 flex justify-between items-center shrink-0">
               <h2 className="text-base font-bold text-white">Keranjang Belanja</h2>
@@ -689,37 +791,40 @@ export default function KasirPage() {
         </div>
       )}
 
-      {/* MODAL SUKSES TRANSAKSI */}
+      {/* ============================================================== */}
+      {/* 🔥 MODAL SUKSES: NOTA GAMBAR ANTI-UBAH & CETAK DIRECT */}
+      {/* ============================================================== */}
       {showSuccess && (
         <div className="fixed inset-0 bg-slate-950/80 z-50 flex items-center justify-center p-4">
           <div className="bg-slate-900 border border-emerald-500/30 rounded-3xl w-full max-w-sm p-5 shadow-2xl text-center">
-            <div className="w-14 h-14 bg-emerald-500/20 text-emerald-400 rounded-full flex items-center justify-center text-2xl mx-auto mb-2.5 border border-emerald-500/40">✓</div>
-            <h3 className="text-lg font-black text-white mb-1">Transaksi Berhasil!</h3>
-            <p className="text-slate-400 font-mono text-xs mb-4">ID: #{String(showSuccess.trxId).slice(-6)}</p>
-            
-            <div className="bg-slate-800/60 p-3 rounded-2xl mb-4 text-left text-xs space-y-1.5 border border-slate-700/50">
-              <div className="flex justify-between font-bold text-white"><span>Total</span><span>Rp {formatRupiah(showSuccess.totalAkhir)}</span></div>
-              <div className="flex justify-between text-slate-400"><span>Bayar ({showSuccess.metodeBayar.toUpperCase()})</span><span>Rp {formatRupiah(showSuccess.bayar)}</span></div>
-              <div className="flex justify-between text-emerald-400 font-semibold"><span>Kembali</span><span>Rp {formatRupiah(showSuccess.kembali)}</span></div>
+            <div className="w-12 h-12 bg-emerald-500/20 text-emerald-400 rounded-full flex items-center justify-center text-2xl mx-auto mb-2 border border-emerald-500/40">✓</div>
+            <h3 className="text-base font-black text-white mb-1">Transaksi Berhasil!</h3>
+            <p className="text-slate-400 font-mono text-[11px] mb-3">ID: #{String(showSuccess.trxId).slice(-6)}</p>
+
+            {/* PREVIEW GAMBAR STRUK RESMI ANTI-EDIT */}
+            <div className="bg-white p-2 rounded-xl mb-3 flex justify-center shadow-inner overflow-hidden max-h-56 overflow-y-auto">
+              <canvas ref={canvasRef} className="w-full h-auto rounded" />
             </div>
 
-            <p className="text-[11px] text-slate-400 mb-3">Pilihan Cetak / Bagikan Struk:</p>
-
-            <div className="flex gap-2 mb-3">
+            <div className="flex gap-2 mb-2">
+              {/* TOMBOL CETAK DIRECT */}
               <button 
                 onClick={handlePrintStruk} 
-                className="flex-1 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl text-xs flex items-center justify-center gap-1.5 shadow-md transition-all"
+                className="flex-1 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl text-xs flex items-center justify-center gap-1 shadow-md transition-all"
               >
                 🖨️ Cetak Struk
               </button>
-              
+
+              {/* TOMBOL SALIN GAMBAR STRUK (UNTUK DI-PASTE DI WA) */}
               <button 
-                onClick={handleKirimWA} 
-                className="flex-1 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-xs flex items-center justify-center gap-1.5 shadow-md transition-all"
+                onClick={handleCopyReceiptImage} 
+                className={`flex-1 py-2.5 ${copySuccess ? 'bg-emerald-700' : 'bg-emerald-600 hover:bg-emerald-700'} text-white font-bold rounded-xl text-xs flex items-center justify-center gap-1 shadow-md transition-all`}
               >
-                📲 Kirim WA
+                {copySuccess ? "✓ Disalin (Buka WA)" : "🖼️ Salin Gambar WA"}
               </button>
             </div>
+
+            <p className="text-[10px] text-slate-400 mb-3">Klik Salin Gambar WA $\rightarrow$ buka chat WA $\rightarrow$ tekan <b>Ctrl + V</b></p>
 
             <button onClick={resetKasir} className="w-full py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold rounded-xl text-xs">
               Selesai & Transaksi Baru
