@@ -349,7 +349,7 @@ export default function KasirPage() {
     setIsProcessing(false);
   };
 
-  // 🔥 CETAK STRUK BROWSER STANDARD
+  // 🔥 CETAK STRUK THERMAL 58MM LANGSUNG KE DEFAULT PRINTER
   const handlePrintStruk = () => {
     if (!showSuccess) return;
     const printWindow = window.open('', '_blank', 'width=350,height=600');
@@ -389,30 +389,17 @@ export default function KasirPage() {
           ${identitasToko.slogan ? `<div class="center" style="font-size:10px;">${identitasToko.slogan}</div>` : ''}
           ${identitasToko.alamatToko ? `<div class="center" style="font-size:10px;">${identitasToko.alamatToko}</div>` : ''}
           ${identitasToko.noTelp ? `<div class="center" style="font-size:10px;">Telp: ${identitasToko.noTelp}</div>` : ''}
-          
           <div class="line"></div>
           <div>No. Trx : #${showSuccess.trxId.slice(-6)}</div>
           <div>Tgl     : ${tglStr}</div>
           <div>Kasir   : ${showSuccess.kasirName}</div>
           ${showSuccess.customerName ? `<div>Pelanggan: ${showSuccess.customerName}</div>` : ''}
-          
           <div class="line"></div>
           ${itemsHtml}
           <div class="line"></div>
-          
-          <div style="display:flex; justify-content:space-between;" class="bold">
-            <span>TOTAL</span>
-            <span>Rp ${formatRupiah(showSuccess.totalAkhir)}</span>
-          </div>
-          <div style="display:flex; justify-content:space-between; font-size:11px; margin-top:2px;">
-            <span>Bayar (${showSuccess.metodeBayar.toUpperCase()})</span>
-            <span>Rp ${formatRupiah(showSuccess.bayar)}</span>
-          </div>
-          <div style="display:flex; justify-content:space-between; font-size:11px;">
-            <span>Kembali</span>
-            <span>Rp ${formatRupiah(showSuccess.kembali)}</span>
-          </div>
-          
+          <div style="display:flex; justify-content:space-between;" class="bold"><span>TOTAL</span><span>Rp ${formatRupiah(showSuccess.totalAkhir)}</span></div>
+          <div style="display:flex; justify-content:space-between; font-size:11px; margin-top:2px;"><span>Bayar (${showSuccess.metodeBayar.toUpperCase()})</span><span>Rp ${formatRupiah(showSuccess.bayar)}</span></div>
+          <div style="display:flex; justify-content:space-between; font-size:11px;"><span>Kembali</span><span>Rp ${formatRupiah(showSuccess.kembali)}</span></div>
           <div class="line"></div>
           <div class="center" style="font-size:11px;">${identitasToko.footerStruk}</div>
           <script>
@@ -427,7 +414,7 @@ export default function KasirPage() {
     printWindow.document.close();
   };
 
-  // 🔥 DIRECT WHATSAPP WEB INTEGRATION (BEBAS MACET)
+  // 🔥 KIRIM WHATSAPP WEB DIRECT
   const handleKirimWA = () => {
     if (!showSuccess) return;
     const date = new Date(showSuccess.timestamp || Date.now());
@@ -459,8 +446,8 @@ export default function KasirPage() {
     text += `${identitasToko.footerStruk}\n`;
 
     const encoded = encodeURIComponent(text);
-    // Langsung buka tab WhatsApp Web yang aktif
-    window.open(`https://web.whatsapp.com/send?text=${encoded}`, '_blank');
+    const targetUrl = `https://web.whatsapp.com/send?text=${encoded}`;
+    window.open(targetUrl, '_blank');
   };
 
   const resetKasir = () => {
