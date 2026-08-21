@@ -49,7 +49,6 @@ export default function KasirPage() {
 
   const [showSuccess, setShowSuccess] = useState<any>(null);
   const [isProcessing, setIsProcessing] = useState(false);
-  const [isPrintingBt, setIsPrintingBt] = useState(false);
 
   useEffect(() => { 
     if (!loading && !user) router.push("/login"); 
@@ -350,109 +349,16 @@ export default function KasirPage() {
     setIsProcessing(false);
   };
 
-  // ==============================================================
-  // ⚡ GENERATOR DATA BINARY ESC/POS (STANDAR PRINTER 58MM)
-  // ==============================================================
-  const generateEscPosBuffer = (data: any) => {
-    const encoder = new TextEncoder();
-    let bytes: number[] = [];
-
-    const addText = (str: string) => {
-      const arr = encoder.encode(str);
-      for (let i = 0; i < arr.length; i++) bytes.push(arr[i]);
-    };
-
-    // Init printer & Reset format
-    bytes.push(0x1B, 0x40);
-
-    // Header Center & Bold
-    bytes.push(0x1B, 0x61, 0x01); // Center
-    bytes.push(0x1B, 0x45, 0x01); // Bold on
-    addText(`${identitasToko.namaToko}\n`);
-    bytes.push(0x1B, 0x45, 0x00); // Bold off
-    
-    if (identitasToko.slogan) addText(`${identitasToko.slogan}\n`);
-    if (identitasToko.alamatToko) addText(`${identitasToko.alamatToko}\n`);
-    if (identitasToko.noTelp) addText(`Telp: ${identitasToko.noTelp}\n`);
-
-    addText("--------------------------------\n");
-    bytes.push(0x1B, 0x61, 0x00); // Left align
-
-    const date = new Date(data.timestamp || Date.now());
-    const tglStr = `${date.getDate()}/${date.getMonth()+1}/${date.getFullYear()} ${date.getHours()}:${String(date.getMinutes()).padStart(2, '0')}`;
-    
-    addText(`Trx : #${data.trxId.slice(-6)}\n`);
-    addText(`Tgl : ${tglStr}\n`);
-    addText(`Ksr : ${data.kasirName}\n`);
-    if (data.customerName) addText(`Plg : ${data.customerName}\n`);
-    addText("--------------------------------\n");
-
-    // Items
-    data.items.forEach((it: any) => {
-      addText(`${it.nama}\n`);
-      const qtyPrice = `${it.qty} x ${formatRupiah(it.hargaJual)}`;
-      const subtotal = `Rp ${formatRupiah(it.qty * it.hargaJual)}`;
-      const spaces = Math.max(1, 32 - qtyPrice.length - subtotal.length);
-      addText(`${qtyPrice}${" ".repeat(spaces)}${subtotal}\n`);
-    });
-
-    if (data.biayaOngkir > 0) {
-      const label = "Biaya Ongkir";
-      const val = `Rp ${formatRupiah(data.biayaOngkir)}`;
-      const sp = Math.max(1, 32 - label.length - val.length);
-      addText(`${label}${" ".repeat(sp)}${val}\n`);
-    }
-    if (data.biayaAdmin > 0) {
-      const label = "Biaya Admin";
-      const val = `Rp ${formatRupiah(data.biayaAdmin)}`;
-      const sp = Math.max(1, 32 - label.length - val.length);
-      addText(`${label}${" ".repeat(sp)}${val}\n`);
-    }
-    if (data.biayaLainnya > 0) {
-      const label = data.namaBiayaLainnya || "Biaya Lain";
-      const val = `Rp ${formatRupiah(data.biayaLainnya)}`;
-      const sp = Math.max(1, 32 - label.length - val.length);
-      addText(`${label}${" ".repeat(sp)}${val}\n`);
-    }
-
-    addText("--------------------------------\n");
-    
-    // Total
-    bytes.push(0x1B, 0x45, 0x01); // Bold on
-    const totLabel = "TOTAL";
-    const totVal = `Rp ${formatRupiah(data.totalAkhir)}`;
-    const spTot = Math.max(1, 32 - totLabel.length - totVal.length);
-    addText(`${totLabel}${" ".repeat(spTot)}${totVal}\n`);
-    bytes.push(0x1B, 0x45, 0x00); // Bold off
-
-    const bayarLabel = `Bayar (${data.metodeBayar.toUpperCase()})`;
-    const bayarVal = `Rp ${formatRupiah(data.bayar)}`;
-    const spBayar = Math.max(1, 32 - bayarLabel.length - bayarVal.length);
-    addText(`${bayarLabel}${" ".repeat(spBayar)}${bayarVal}\n`);
-
-    const kemLabel = "Kembali";
-    const kemVal = `Rp ${formatRupiah(data.kembali)}`;
-    const spKem = Math.max(1, 32 - kemLabel.length - kemVal.length);
-    addText(`${kemLabel}${" ".repeat(spKem)}${kemVal}\n`);
-
-    addText("--------------------------------\n");
-    bytes.push(0x1B, 0x61, 0x01); // Center
-    addText(`${identitasToko.footerStruk}\n\n\n\n`); // Line feeds
-
-    return new Uint8Array(bytes);
-  };
-
-  // ==============================================================
-  // ⚡ FALLBACK CETAK STANDARD (JIKA TANPA BLUETOOTH / USB KABEL)
-  // ==============================================================
-  const fallbackWindowPrint = (data: any) => {
+  // 🔥 CETAK STRUK BROWSER STANDARD
+  const handlePrintStruk = () => {
+    if (!showSuccess) return;
     const printWindow = window.open('', '_blank', 'width=350,height=600');
     if (!printWindow) return alert("Izinkan pop-up browser untuk mencetak struk!");
 
-    const date = new Date(data.timestamp || Date.now());
+    const date = new Date(showSuccess.timestamp || Date.now());
     const tglStr = `${date.getDate()}/${date.getMonth()+1}/${date.getFullYear()} ${date.getHours()}:${String(date.getMinutes()).padStart(2, '0')}`;
 
-    let itemsHtml = data.items.map(item => `
+    let itemsHtml = showSuccess.items.map(item => `
       <div style="display:flex; justify-content:space-between; margin-bottom:2px;">
         <span style="font-weight:bold;">${item.nama}</span>
         <span>Rp ${formatRupiah(item.qty * item.hargaJual)}</span>
@@ -462,14 +368,14 @@ export default function KasirPage() {
       </div>
     `).join('');
 
-    if (data.biayaOngkir > 0) itemsHtml += `<div style="display:flex; justify-content:space-between; font-size:12px;"><span>Biaya Ongkir</span><span>Rp ${formatRupiah(data.biayaOngkir)}</span></div>`;
-    if (data.biayaAdmin > 0) itemsHtml += `<div style="display:flex; justify-content:space-between; font-size:12px;"><span>Biaya Admin</span><span>Rp ${formatRupiah(data.biayaAdmin)}</span></div>`;
-    if (data.biayaLainnya > 0) itemsHtml += `<div style="display:flex; justify-content:space-between; font-size:12px;"><span>${data.namaBiayaLainnya || "Biaya Lain"}</span><span>Rp ${formatRupiah(data.biayaLainnya)}</span></div>`;
+    if (showSuccess.biayaOngkir > 0) itemsHtml += `<div style="display:flex; justify-content:space-between; font-size:12px;"><span>Biaya Ongkir</span><span>Rp ${formatRupiah(showSuccess.biayaOngkir)}</span></div>`;
+    if (showSuccess.biayaAdmin > 0) itemsHtml += `<div style="display:flex; justify-content:space-between; font-size:12px;"><span>Biaya Admin</span><span>Rp ${formatRupiah(showSuccess.biayaAdmin)}</span></div>`;
+    if (showSuccess.biayaLainnya > 0) itemsHtml += `<div style="display:flex; justify-content:space-between; font-size:12px;"><span>${showSuccess.namaBiayaLainnya || "Biaya Lain"}</span><span>Rp ${formatRupiah(showSuccess.biayaLainnya)}</span></div>`;
 
     const htmlContent = `
       <html>
         <head>
-          <title>Struk_${data.trxId}</title>
+          <title>Struk_${showSuccess.trxId}</title>
           <style>
             @page { margin: 0; size: auto; }
             body { font-family: monospace, Courier, sans-serif; width: 58mm; padding: 6px; margin: 0 auto; color: #000; font-size: 12px; }
@@ -483,17 +389,30 @@ export default function KasirPage() {
           ${identitasToko.slogan ? `<div class="center" style="font-size:10px;">${identitasToko.slogan}</div>` : ''}
           ${identitasToko.alamatToko ? `<div class="center" style="font-size:10px;">${identitasToko.alamatToko}</div>` : ''}
           ${identitasToko.noTelp ? `<div class="center" style="font-size:10px;">Telp: ${identitasToko.noTelp}</div>` : ''}
+          
           <div class="line"></div>
-          <div>No. Trx : #${data.trxId.slice(-6)}</div>
+          <div>No. Trx : #${showSuccess.trxId.slice(-6)}</div>
           <div>Tgl     : ${tglStr}</div>
-          <div>Kasir   : ${data.kasirName}</div>
-          ${data.customerName ? `<div>Pelanggan: ${data.customerName}</div>` : ''}
+          <div>Kasir   : ${showSuccess.kasirName}</div>
+          ${showSuccess.customerName ? `<div>Pelanggan: ${showSuccess.customerName}</div>` : ''}
+          
           <div class="line"></div>
           ${itemsHtml}
           <div class="line"></div>
-          <div style="display:flex; justify-content:space-between;" class="bold"><span>TOTAL</span><span>Rp ${formatRupiah(data.totalAkhir)}</span></div>
-          <div style="display:flex; justify-content:space-between; font-size:11px; margin-top:2px;"><span>Bayar (${data.metodeBayar.toUpperCase()})</span><span>Rp ${formatRupiah(data.bayar)}</span></div>
-          <div style="display:flex; justify-content:space-between; font-size:11px;"><span>Kembali</span><span>Rp ${formatRupiah(data.kembali)}</span></div>
+          
+          <div style="display:flex; justify-content:space-between;" class="bold">
+            <span>TOTAL</span>
+            <span>Rp ${formatRupiah(showSuccess.totalAkhir)}</span>
+          </div>
+          <div style="display:flex; justify-content:space-between; font-size:11px; margin-top:2px;">
+            <span>Bayar (${showSuccess.metodeBayar.toUpperCase()})</span>
+            <span>Rp ${formatRupiah(showSuccess.bayar)}</span>
+          </div>
+          <div style="display:flex; justify-content:space-between; font-size:11px;">
+            <span>Kembali</span>
+            <span>Rp ${formatRupiah(showSuccess.kembali)}</span>
+          </div>
+          
           <div class="line"></div>
           <div class="center" style="font-size:11px;">${identitasToko.footerStruk}</div>
           <script>
@@ -508,69 +427,7 @@ export default function KasirPage() {
     printWindow.document.close();
   };
 
-  // ==============================================================
-  // ⚡ SMART DETECTION CETAK STRUK (BLUETOOTH DENGAN AUTO-FALLBACK)
-  // ==============================================================
-  const handleSmartPrint = async () => {
-    if (!showSuccess) return;
-
-    // 1. Periksa dukungan Web Bluetooth pada browser
-    if (typeof navigator !== "undefined" && navigator.bluetooth) {
-      setIsPrintingBt(true);
-      try {
-        // Pindai perangkat thermal Bluetooth printer
-        const device = await navigator.bluetooth.requestDevice({
-          acceptAllDevices: true,
-          optionalServices: [
-            "000018f0-0000-1000-8000-00805f9b34fb", // Standar POS thermal
-            "e7810a71-73ae-499d-8c15-faa9aef0c3f1",
-            "49535343-fe7d-4ae5-8fa9-9fafd205e455",
-            "0000fff0-0000-1000-8000-00805f9b34fb",
-            "0000ff00-0000-1000-8000-00805f9b34fb"
-          ]
-        });
-
-        if (device && device.gatt) {
-          const server = await device.gatt.connect();
-          const services = await server.getPrimaryServices();
-          let writeChar: any = null;
-
-          for (const service of services) {
-            const chars = await service.getCharacteristics();
-            for (const char of chars) {
-              if (char.properties.write || char.properties.writeWithoutResponse) {
-                writeChar = char;
-                break;
-              }
-            }
-            if (writeChar) break;
-          }
-
-          if (writeChar) {
-            const buffer = generateEscPosBuffer(showSuccess);
-            // Kirim per chunk (50 bytes) agar aman buffer printer
-            const chunkSize = 50;
-            for (let i = 0; i < buffer.length; i += chunkSize) {
-              const chunk = buffer.slice(i, i + chunkSize);
-              await writeChar.writeValue(chunk);
-            }
-            setIsPrintingBt(false);
-            return; // Selesai cetak via Bluetooth
-          }
-        }
-      } catch (err: any) {
-        console.warn("Bluetooth dibatalkan / gagal, beralih ke dialog cetak driver:", err);
-      }
-      setIsPrintingBt(false);
-    }
-
-    // 2. Fallback: Jika laptop tanpa Bluetooth atau pengguna membatalkan Bluetooth
-    fallbackWindowPrint(showSuccess);
-  };
-
-  // ==============================================================
-  // ⚡ SMART PROTOKOL WHATSAPP (DIRECT APP OPEN)
-  // ==============================================================
+  // 🔥 DIRECT WHATSAPP WEB INTEGRATION (BEBAS MACET)
   const handleKirimWA = () => {
     if (!showSuccess) return;
     const date = new Date(showSuccess.timestamp || Date.now());
@@ -602,9 +459,8 @@ export default function KasirPage() {
     text += `${identitasToko.footerStruk}\n`;
 
     const encoded = encodeURIComponent(text);
-    
-    // Tembak langsung ke WhatsApp Desktop Windows
-    window.location.href = `whatsapp://send?text=${encoded}`;
+    // Langsung buka tab WhatsApp Web yang aktif
+    window.open(`https://web.whatsapp.com/send?text=${encoded}`, '_blank');
   };
 
   const resetKasir = () => {
@@ -643,7 +499,6 @@ export default function KasirPage() {
               <input type="text" placeholder="Cari Nama Barang / Barcode..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="bg-transparent border-none outline-none text-sm text-white w-full" />
             </div>
 
-            {/* List Barang */}
             <div className="flex-1 min-h-0 overflow-y-auto pr-1 space-y-2.5">
               {filteredProduk.map(p => {
                 const inCart = cart.find(c => c.id === p.id);
@@ -764,17 +619,14 @@ export default function KasirPage() {
         <div className="fixed inset-0 bg-slate-950/80 z-50 flex items-center justify-center p-4">
           <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-sm p-5 shadow-2xl space-y-3">
             <h3 className="text-sm font-bold text-white">Tambah Biaya Tambahan</h3>
-            
             <div>
               <label className="text-xs text-slate-400 block mb-1">Biaya Ongkir (Rp)</label>
               <input type="number" value={biayaOngkir || ""} onChange={(e) => setBiayaOngkir(Number(e.target.value))} placeholder="0" className="w-full bg-slate-800 rounded-xl p-2.5 text-white text-xs border border-slate-700 outline-none" />
             </div>
-            
             <div>
               <label className="text-xs text-slate-400 block mb-1">Biaya Admin / Jasa (Rp)</label>
               <input type="number" value={biayaAdmin || ""} onChange={(e) => setBiayaAdmin(Number(e.target.value))} placeholder="0" className="w-full bg-slate-800 rounded-xl p-2.5 text-white text-xs border border-slate-700 outline-none" />
             </div>
-
             <div className="p-3 bg-slate-800/40 rounded-xl border border-slate-700/50 space-y-2">
               <label className="text-xs font-bold text-orange-400 block">Biaya Lain-lain (Kustom)</label>
               <input 
@@ -792,7 +644,6 @@ export default function KasirPage() {
                 className="w-full bg-slate-800 rounded-xl p-2.5 text-white text-xs border border-slate-700 outline-none" 
               />
             </div>
-
             <div className="flex gap-2 pt-1">
               <button onClick={() => setShowBiayaDialog(false)} className="flex-1 py-2 bg-slate-800 text-slate-300 rounded-xl text-xs font-bold">TUTUP</button>
               <button onClick={() => setShowBiayaDialog(false)} className="flex-1 py-2 bg-emerald-500 text-slate-950 rounded-xl text-xs font-bold">SIMPAN</button>
@@ -851,9 +702,7 @@ export default function KasirPage() {
         </div>
       )}
 
-      {/* ============================================================== */}
-      {/* ⚡ MODAL TRANSAKSI SUKSES: SMART BLUETOOTH & NATIVE WHATSAPP */}
-      {/* ============================================================== */}
+      {/* MODAL SUKSES TRANSAKSI */}
       {showSuccess && (
         <div className="fixed inset-0 bg-slate-950/80 z-50 flex items-center justify-center p-4">
           <div className="bg-slate-900 border border-emerald-500/30 rounded-3xl w-full max-w-sm p-5 shadow-2xl text-center">
@@ -871,11 +720,10 @@ export default function KasirPage() {
 
             <div className="flex gap-2 mb-3">
               <button 
-                onClick={handleSmartPrint} 
-                disabled={isPrintingBt}
-                className="flex-1 py-2.5 bg-blue-600 hover:bg-blue-700 disabled:bg-slate-700 text-white font-bold rounded-xl text-xs flex items-center justify-center gap-1.5 shadow-md transition-all"
+                onClick={handlePrintStruk} 
+                className="flex-1 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl text-xs flex items-center justify-center gap-1.5 shadow-md transition-all"
               >
-                {isPrintingBt ? "Menghubungkan..." : "🖨️ Cetak Struk"}
+                🖨️ Cetak Struk
               </button>
               
               <button 
