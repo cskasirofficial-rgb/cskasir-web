@@ -1,7 +1,7 @@
 // @ts-nocheck
 "use client";
 
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/context/AuthContext";
 import Sidebar from "@/components/Sidebar";
@@ -18,7 +18,6 @@ export default function KasirPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [customers, setCustomers] = useState<any[]>([]);
   
-  // Data Toko & QRIS
   const [identitasToko, setIdentitasToko] = useState<any>({
     namaToko: "CSKasir",
     alamatToko: "",
@@ -30,7 +29,6 @@ export default function KasirPage() {
 
   const [editMode, setEditMode] = useState<any>(null);
   
-  // Pembayaran & Biaya
   const [showPay, setShowPay] = useState(false);
   const [uangBayar, setUangBayar] = useState("");
   const [metodeBayar, setMetodeBayar] = useState("cash");
@@ -40,7 +38,6 @@ export default function KasirPage() {
   const [biayaLainnya, setBiayaLainnya] = useState(0);
   const [namaBiayaLain, setNamaBiayaLain] = useState("Biaya Lain-lain");
   
-  // Modals
   const [selectedCustomer, setSelectedCustomer] = useState<any>(null);
   const [showCustomerSearch, setShowCustomerSearch] = useState(false);
   const [customerSearchQuery, setCustomerSearchQuery] = useState("");
@@ -50,15 +47,14 @@ export default function KasirPage() {
   const [showManualQty, setShowManualQty] = useState<any>(null);
   const [inputManualQty, setInputManualQty] = useState("");
 
-  // Dialog Sukses & Struk
   const [showSuccess, setShowSuccess] = useState<any>(null);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [isPrintingBt, setIsPrintingBt] = useState(false);
 
   useEffect(() => { 
     if (!loading && !user) router.push("/login"); 
   }, [user, loading, router]);
 
-  // Tangkap Lemparan Edit dari Laporan
   useEffect(() => {
     if (typeof window !== "undefined") {
       const payload = localStorage.getItem("edit_trx_payload");
@@ -80,12 +76,10 @@ export default function KasirPage() {
     }
   }, []);
 
-  // Fetch Stok, Pelanggan, Identitas Toko, & QRIS
   useEffect(() => {
     const prof = profile as any;
     if (!prof?.groupId) return;
 
-    // 1. Stok Produk
     const pRef = ref(database, `stok/${prof.groupId}`);
     const unsubProduk = onValue(pRef, (snap) => {
       if (snap.exists()) {
@@ -96,7 +90,6 @@ export default function KasirPage() {
       }
     });
 
-    // 2. Pelanggan
     const cRef = ref(database, `pelanggan_toko/${prof.groupId}`);
     const unsubCustomer = onValue(cRef, (snap) => {
       if (snap.exists()) {
@@ -104,7 +97,6 @@ export default function KasirPage() {
       }
     });
 
-    // 3. Identitas Toko
     const tokoRef = ref(database, `DATA_TOKO/${prof.groupId}/identitas`);
     const unsubToko = onValue(tokoRef, (snap) => {
       if (snap.exists()) {
@@ -119,7 +111,6 @@ export default function KasirPage() {
       }
     });
 
-    // 4. QRIS Kasir
     if (user?.uid) {
       const userRef = ref(database, `users/${user.uid}`);
       onValue(userRef, (snap) => {
@@ -248,7 +239,6 @@ export default function KasirPage() {
     setShowEditPrice(null);
   };
 
-  // 🔥 PROSES TRANSAKSI
   const prosesPembayaran = async () => {
     if (isUtang && !selectedCustomer && !editMode?.customerName) {
       return alert("Transaksi Utang wajib memilih pelanggan!");
@@ -360,16 +350,109 @@ export default function KasirPage() {
     setIsProcessing(false);
   };
 
-  // 🔥 CETAK STRUK (THERMAL BROWSER PRINT)
-  const handlePrintStruk = () => {
-    if (!showSuccess) return;
+  // ==============================================================
+  // ⚡ GENERATOR DATA BINARY ESC/POS (STANDAR PRINTER 58MM)
+  // ==============================================================
+  const generateEscPosBuffer = (data: any) => {
+    const encoder = new TextEncoder();
+    let bytes: number[] = [];
+
+    const addText = (str: string) => {
+      const arr = encoder.encode(str);
+      for (let i = 0; i < arr.length; i++) bytes.push(arr[i]);
+    };
+
+    // Init printer & Reset format
+    bytes.push(0x1B, 0x40);
+
+    // Header Center & Bold
+    bytes.push(0x1B, 0x61, 0x01); // Center
+    bytes.push(0x1B, 0x45, 0x01); // Bold on
+    addText(`${identitasToko.namaToko}\n`);
+    bytes.push(0x1B, 0x45, 0x00); // Bold off
+    
+    if (identitasToko.slogan) addText(`${identitasToko.slogan}\n`);
+    if (identitasToko.alamatToko) addText(`${identitasToko.alamatToko}\n`);
+    if (identitasToko.noTelp) addText(`Telp: ${identitasToko.noTelp}\n`);
+
+    addText("--------------------------------\n");
+    bytes.push(0x1B, 0x61, 0x00); // Left align
+
+    const date = new Date(data.timestamp || Date.now());
+    const tglStr = `${date.getDate()}/${date.getMonth()+1}/${date.getFullYear()} ${date.getHours()}:${String(date.getMinutes()).padStart(2, '0')}`;
+    
+    addText(`Trx : #${data.trxId.slice(-6)}\n`);
+    addText(`Tgl : ${tglStr}\n`);
+    addText(`Ksr : ${data.kasirName}\n`);
+    if (data.customerName) addText(`Plg : ${data.customerName}\n`);
+    addText("--------------------------------\n");
+
+    // Items
+    data.items.forEach((it: any) => {
+      addText(`${it.nama}\n`);
+      const qtyPrice = `${it.qty} x ${formatRupiah(it.hargaJual)}`;
+      const subtotal = `Rp ${formatRupiah(it.qty * it.hargaJual)}`;
+      const spaces = Math.max(1, 32 - qtyPrice.length - subtotal.length);
+      addText(`${qtyPrice}${" ".repeat(spaces)}${subtotal}\n`);
+    });
+
+    if (data.biayaOngkir > 0) {
+      const label = "Biaya Ongkir";
+      const val = `Rp ${formatRupiah(data.biayaOngkir)}`;
+      const sp = Math.max(1, 32 - label.length - val.length);
+      addText(`${label}${" ".repeat(sp)}${val}\n`);
+    }
+    if (data.biayaAdmin > 0) {
+      const label = "Biaya Admin";
+      const val = `Rp ${formatRupiah(data.biayaAdmin)}`;
+      const sp = Math.max(1, 32 - label.length - val.length);
+      addText(`${label}${" ".repeat(sp)}${val}\n`);
+    }
+    if (data.biayaLainnya > 0) {
+      const label = data.namaBiayaLainnya || "Biaya Lain";
+      const val = `Rp ${formatRupiah(data.biayaLainnya)}`;
+      const sp = Math.max(1, 32 - label.length - val.length);
+      addText(`${label}${" ".repeat(sp)}${val}\n`);
+    }
+
+    addText("--------------------------------\n");
+    
+    // Total
+    bytes.push(0x1B, 0x45, 0x01); // Bold on
+    const totLabel = "TOTAL";
+    const totVal = `Rp ${formatRupiah(data.totalAkhir)}`;
+    const spTot = Math.max(1, 32 - totLabel.length - totVal.length);
+    addText(`${totLabel}${" ".repeat(spTot)}${totVal}\n`);
+    bytes.push(0x1B, 0x45, 0x00); // Bold off
+
+    const bayarLabel = `Bayar (${data.metodeBayar.toUpperCase()})`;
+    const bayarVal = `Rp ${formatRupiah(data.bayar)}`;
+    const spBayar = Math.max(1, 32 - bayarLabel.length - bayarVal.length);
+    addText(`${bayarLabel}${" ".repeat(spBayar)}${bayarVal}\n`);
+
+    const kemLabel = "Kembali";
+    const kemVal = `Rp ${formatRupiah(data.kembali)}`;
+    const spKem = Math.max(1, 32 - kemLabel.length - kemVal.length);
+    addText(`${kemLabel}${" ".repeat(spKem)}${kemVal}\n`);
+
+    addText("--------------------------------\n");
+    bytes.push(0x1B, 0x61, 0x01); // Center
+    addText(`${identitasToko.footerStruk}\n\n\n\n`); // Line feeds
+
+    return new Uint8Array(bytes);
+  };
+
+  // ==============================================================
+  // ⚡ FALLBACK CETAK STANDARD (JIKA TANPA BLUETOOTH / USB KABEL)
+  // ==============================================================
+  const fallbackWindowPrint = (data: any) => {
     const printWindow = window.open('', '_blank', 'width=350,height=600');
     if (!printWindow) return alert("Izinkan pop-up browser untuk mencetak struk!");
 
-    const date = new Date(showSuccess.timestamp || Date.now());
+    const date = new Date(data.timestamp || Date.now());
     const tglStr = `${date.getDate()}/${date.getMonth()+1}/${date.getFullYear()} ${date.getHours()}:${String(date.getMinutes()).padStart(2, '0')}`;
 
-    let itemsHtml = showSuccess.items.map(item => `
+    let itemsHtml = data.items.map(item => `
       <div style="display:flex; justify-content:space-between; margin-bottom:2px;">
         <span style="font-weight:bold;">${item.nama}</span>
         <span>Rp ${formatRupiah(item.qty * item.hargaJual)}</span>
@@ -379,20 +462,14 @@ export default function KasirPage() {
       </div>
     `).join('');
 
-    if (showSuccess.biayaOngkir > 0) {
-      itemsHtml += `<div style="display:flex; justify-content:space-between; font-size:12px;"><span>Biaya Ongkir</span><span>Rp ${formatRupiah(showSuccess.biayaOngkir)}</span></div>`;
-    }
-    if (showSuccess.biayaAdmin > 0) {
-      itemsHtml += `<div style="display:flex; justify-content:space-between; font-size:12px;"><span>Biaya Admin</span><span>Rp ${formatRupiah(showSuccess.biayaAdmin)}</span></div>`;
-    }
-    if (showSuccess.biayaLainnya > 0) {
-      itemsHtml += `<div style="display:flex; justify-content:space-between; font-size:12px;"><span>${showSuccess.namaBiayaLainnya || "Biaya Lain"}</span><span>Rp ${formatRupiah(showSuccess.biayaLainnya)}</span></div>`;
-    }
+    if (data.biayaOngkir > 0) itemsHtml += `<div style="display:flex; justify-content:space-between; font-size:12px;"><span>Biaya Ongkir</span><span>Rp ${formatRupiah(data.biayaOngkir)}</span></div>`;
+    if (data.biayaAdmin > 0) itemsHtml += `<div style="display:flex; justify-content:space-between; font-size:12px;"><span>Biaya Admin</span><span>Rp ${formatRupiah(data.biayaAdmin)}</span></div>`;
+    if (data.biayaLainnya > 0) itemsHtml += `<div style="display:flex; justify-content:space-between; font-size:12px;"><span>${data.namaBiayaLainnya || "Biaya Lain"}</span><span>Rp ${formatRupiah(data.biayaLainnya)}</span></div>`;
 
     const htmlContent = `
       <html>
         <head>
-          <title>Struk_${showSuccess.trxId}</title>
+          <title>Struk_${data.trxId}</title>
           <style>
             @page { margin: 0; size: auto; }
             body { font-family: monospace, Courier, sans-serif; width: 58mm; padding: 6px; margin: 0 auto; color: #000; font-size: 12px; }
@@ -406,30 +483,17 @@ export default function KasirPage() {
           ${identitasToko.slogan ? `<div class="center" style="font-size:10px;">${identitasToko.slogan}</div>` : ''}
           ${identitasToko.alamatToko ? `<div class="center" style="font-size:10px;">${identitasToko.alamatToko}</div>` : ''}
           ${identitasToko.noTelp ? `<div class="center" style="font-size:10px;">Telp: ${identitasToko.noTelp}</div>` : ''}
-          
           <div class="line"></div>
-          <div>No. Trx : #${showSuccess.trxId.slice(-6)}</div>
+          <div>No. Trx : #${data.trxId.slice(-6)}</div>
           <div>Tgl     : ${tglStr}</div>
-          <div>Kasir   : ${showSuccess.kasirName}</div>
-          ${showSuccess.customerName ? `<div>Pelanggan: ${showSuccess.customerName}</div>` : ''}
-          
+          <div>Kasir   : ${data.kasirName}</div>
+          ${data.customerName ? `<div>Pelanggan: ${data.customerName}</div>` : ''}
           <div class="line"></div>
           ${itemsHtml}
           <div class="line"></div>
-          
-          <div style="display:flex; justify-content:space-between;" class="bold">
-            <span>TOTAL</span>
-            <span>Rp ${formatRupiah(showSuccess.totalAkhir)}</span>
-          </div>
-          <div style="display:flex; justify-content:space-between; font-size:11px; margin-top:2px;">
-            <span>Bayar (${showSuccess.metodeBayar.toUpperCase()})</span>
-            <span>Rp ${formatRupiah(showSuccess.bayar)}</span>
-          </div>
-          <div style="display:flex; justify-content:space-between; font-size:11px;">
-            <span>Kembali</span>
-            <span>Rp ${formatRupiah(showSuccess.kembali)}</span>
-          </div>
-          
+          <div style="display:flex; justify-content:space-between;" class="bold"><span>TOTAL</span><span>Rp ${formatRupiah(data.totalAkhir)}</span></div>
+          <div style="display:flex; justify-content:space-between; font-size:11px; margin-top:2px;"><span>Bayar (${data.metodeBayar.toUpperCase()})</span><span>Rp ${formatRupiah(data.bayar)}</span></div>
+          <div style="display:flex; justify-content:space-between; font-size:11px;"><span>Kembali</span><span>Rp ${formatRupiah(data.kembali)}</span></div>
           <div class="line"></div>
           <div class="center" style="font-size:11px;">${identitasToko.footerStruk}</div>
           <script>
@@ -444,7 +508,69 @@ export default function KasirPage() {
     printWindow.document.close();
   };
 
-  // 🔥 KIRIM STRUK WHATSAPP
+  // ==============================================================
+  // ⚡ SMART DETECTION CETAK STRUK (BLUETOOTH DENGAN AUTO-FALLBACK)
+  // ==============================================================
+  const handleSmartPrint = async () => {
+    if (!showSuccess) return;
+
+    // 1. Periksa dukungan Web Bluetooth pada browser
+    if (typeof navigator !== "undefined" && navigator.bluetooth) {
+      setIsPrintingBt(true);
+      try {
+        // Pindai perangkat thermal Bluetooth printer
+        const device = await navigator.bluetooth.requestDevice({
+          acceptAllDevices: true,
+          optionalServices: [
+            "000018f0-0000-1000-8000-00805f9b34fb", // Standar POS thermal
+            "e7810a71-73ae-499d-8c15-faa9aef0c3f1",
+            "49535343-fe7d-4ae5-8fa9-9fafd205e455",
+            "0000fff0-0000-1000-8000-00805f9b34fb",
+            "0000ff00-0000-1000-8000-00805f9b34fb"
+          ]
+        });
+
+        if (device && device.gatt) {
+          const server = await device.gatt.connect();
+          const services = await server.getPrimaryServices();
+          let writeChar: any = null;
+
+          for (const service of services) {
+            const chars = await service.getCharacteristics();
+            for (const char of chars) {
+              if (char.properties.write || char.properties.writeWithoutResponse) {
+                writeChar = char;
+                break;
+              }
+            }
+            if (writeChar) break;
+          }
+
+          if (writeChar) {
+            const buffer = generateEscPosBuffer(showSuccess);
+            // Kirim per chunk (50 bytes) agar aman buffer printer
+            const chunkSize = 50;
+            for (let i = 0; i < buffer.length; i += chunkSize) {
+              const chunk = buffer.slice(i, i + chunkSize);
+              await writeChar.writeValue(chunk);
+            }
+            setIsPrintingBt(false);
+            return; // Selesai cetak via Bluetooth
+          }
+        }
+      } catch (err: any) {
+        console.warn("Bluetooth dibatalkan / gagal, beralih ke dialog cetak driver:", err);
+      }
+      setIsPrintingBt(false);
+    }
+
+    // 2. Fallback: Jika laptop tanpa Bluetooth atau pengguna membatalkan Bluetooth
+    fallbackWindowPrint(showSuccess);
+  };
+
+  // ==============================================================
+  // ⚡ SMART PROTOKOL WHATSAPP (DIRECT APP OPEN)
+  // ==============================================================
   const handleKirimWA = () => {
     if (!showSuccess) return;
     const date = new Date(showSuccess.timestamp || Date.now());
@@ -460,7 +586,7 @@ export default function KasirPage() {
     if (showSuccess.customerName) text += `Customer: ${showSuccess.customerName}\n`;
     text += `--------------------------------\n`;
 
-    showSuccess.items.forEach(item => {
+    showSuccess.items.forEach((item: any) => {
       text += `• *${item.nama}*\n  ${item.qty} x Rp ${formatRupiah(item.hargaJual)} = Rp ${formatRupiah(item.qty * item.hargaJual)}\n`;
     });
 
@@ -476,7 +602,9 @@ export default function KasirPage() {
     text += `${identitasToko.footerStruk}\n`;
 
     const encoded = encodeURIComponent(text);
-    window.open(`https://wa.me/?text=${encoded}`, '_blank');
+    
+    // Tembak langsung ke WhatsApp Desktop Windows
+    window.location.href = `whatsapp://send?text=${encoded}`;
   };
 
   const resetKasir = () => {
@@ -631,9 +759,7 @@ export default function KasirPage() {
         </main>
       </div>
 
-      {/* ============================================================== */}
-      {/* 🔥 MODAL TAMBAH BIAYA DINAMIS (ONGKIR, ADMIN, BIAYA LAIN KUSTOM) */}
-      {/* ============================================================== */}
+      {/* MODAL TAMBAH BIAYA */}
       {showBiayaDialog && (
         <div className="fixed inset-0 bg-slate-950/80 z-50 flex items-center justify-center p-4">
           <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-sm p-5 shadow-2xl space-y-3">
@@ -649,7 +775,6 @@ export default function KasirPage() {
               <input type="number" value={biayaAdmin || ""} onChange={(e) => setBiayaAdmin(Number(e.target.value))} placeholder="0" className="w-full bg-slate-800 rounded-xl p-2.5 text-white text-xs border border-slate-700 outline-none" />
             </div>
 
-            {/* 🔥 BIAYA LAIN-LAIN DENGAN KETERANGAN CUSTOM */}
             <div className="p-3 bg-slate-800/40 rounded-xl border border-slate-700/50 space-y-2">
               <label className="text-xs font-bold text-orange-400 block">Biaya Lain-lain (Kustom)</label>
               <input 
@@ -676,9 +801,7 @@ export default function KasirPage() {
         </div>
       )}
 
-      {/* ============================================================== */}
-      {/* 🔥 MODAL PEMBAYARAN (DENGAN TAMPILAN GAMBAR QRIS OTOMATIS) */}
-      {/* ============================================================== */}
+      {/* MODAL PEMBAYARAN */}
       {showPay && (
         <div className="fixed inset-0 bg-slate-950/80 z-50 flex items-center justify-center p-4">
           <div className="bg-slate-900 border border-slate-800 rounded-3xl w-full max-w-sm p-5 shadow-2xl">
@@ -729,7 +852,7 @@ export default function KasirPage() {
       )}
 
       {/* ============================================================== */}
-      {/* 🔥 MODAL SUCCESS (DENGAN TOMBOL CETAK STRUK & SHARE WA) */}
+      {/* ⚡ MODAL TRANSAKSI SUKSES: SMART BLUETOOTH & NATIVE WHATSAPP */}
       {/* ============================================================== */}
       {showSuccess && (
         <div className="fixed inset-0 bg-slate-950/80 z-50 flex items-center justify-center p-4">
@@ -744,22 +867,22 @@ export default function KasirPage() {
               <div className="flex justify-between text-emerald-400 font-semibold"><span>Kembali</span><span>Rp {formatRupiah(showSuccess.kembali)}</span></div>
             </div>
 
-            <p className="text-[11px] text-slate-400 mb-3">Silakan pilih tindakan:</p>
+            <p className="text-[11px] text-slate-400 mb-3">Pilihan Cetak / Bagikan Struk:</p>
 
-            {/* 🔥 2 TOMBOL UTAMA PERSIS ANDROID */}
             <div className="flex gap-2 mb-3">
               <button 
-                onClick={handlePrintStruk} 
-                className="flex-1 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl text-xs flex items-center justify-center gap-1.5 shadow-md"
+                onClick={handleSmartPrint} 
+                disabled={isPrintingBt}
+                className="flex-1 py-2.5 bg-blue-600 hover:bg-blue-700 disabled:bg-slate-700 text-white font-bold rounded-xl text-xs flex items-center justify-center gap-1.5 shadow-md transition-all"
               >
-                🖨️ Cetak Struk
+                {isPrintingBt ? "Menghubungkan..." : "🖨️ Cetak Struk"}
               </button>
               
               <button 
                 onClick={handleKirimWA} 
-                className="flex-1 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-xs flex items-center justify-center gap-1.5 shadow-md"
+                className="flex-1 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-xs flex items-center justify-center gap-1.5 shadow-md transition-all"
               >
-                📲 Kirim Struk
+                📲 Kirim WA
               </button>
             </div>
 
